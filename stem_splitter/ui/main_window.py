@@ -29,7 +29,11 @@ class MainWindow(QMainWindow):
         self._source.start_pipeline.connect(self._on_start_pipeline)
         self._output.convert_midi_requested.connect(self._on_convert_midi)
 
+    def _set_pipeline_running(self, running: bool):
+        self._source.setEnabled(not running)
+
     def _on_start_pipeline(self, source: str, track_name: str, is_url: bool):
+        self._set_pipeline_running(True)
         self._output.setVisible(False)
         if is_url:
             self._progress.show_download()
@@ -47,6 +51,7 @@ class MainWindow(QMainWindow):
         self._progress.update_progress(stage, value)
 
     def _on_pipeline_finished(self, output_dir: Path):
+        self._set_pipeline_running(False)
         self._progress.reset()
         self._output.show_results(output_dir)
 
@@ -69,5 +74,8 @@ class MainWindow(QMainWindow):
         self._midi_worker.start()
 
     def _on_error(self, message: str):
+        self._set_pipeline_running(False)
         self._progress.reset()
+        if self._output._output_dir is not None:
+            self._output.setVisible(True)
         QMessageBox.critical(self, "Error", message)
