@@ -1,4 +1,5 @@
 from pathlib import Path
+import pytest
 from stem_splitter.core.output import make_output_dir, stem_paths, midi_path, STEMS
 
 def test_stems_list():
@@ -30,3 +31,7 @@ def test_stem_paths_returns_all_six(tmp_path):
 
 def test_midi_path(tmp_path):
     assert midi_path(tmp_path, "bass") == tmp_path / "bass.mid"
+
+def test_midi_path_raises_for_unknown_stem(tmp_path):
+    with pytest.raises(ValueError, match="Unknown stem"):
+        midi_path(tmp_path, "saxophone")
