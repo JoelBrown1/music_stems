@@ -29,13 +29,14 @@ class PipelineWorker(QThread):
                     self.progress.emit("Separating", 0)
                     separate(audio_path, output_dir)
                     self.progress.emit("Separating", 100)
+                    self.finished.emit(output_dir)
             else:
                 audio_path = Path(self.source)
                 output_dir = make_output_dir(self.track_name)
                 self.progress.emit("Separating", 0)
                 separate(audio_path, output_dir)
                 self.progress.emit("Separating", 100)
-            self.finished.emit(output_dir)
+                self.finished.emit(output_dir)
         except Exception as e:
             self.error.emit(str(e))
 
