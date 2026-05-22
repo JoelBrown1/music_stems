@@ -1,3 +1,4 @@
+import os
 import tempfile
 from pathlib import Path
 from PyQt6.QtWidgets import (
@@ -118,8 +119,18 @@ class SourcePanel(QWidget):
     def _on_stop(self):
         if not self._recorder:
             return
-        tmp = tempfile.mktemp(suffix=".wav")
-        self._recorder.stop(Path(tmp))
+        fd, tmp = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        try:
+            self._recorder.stop(Path(tmp))
+        except RuntimeError as exc:
+            self._recorder = None
+            self._record_btn.setEnabled(True)
+            self._stop_btn.setEnabled(False)
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Recording Error", str(exc))
+            return
+        self._recorder = None
         self._record_btn.setEnabled(True)
         self._stop_btn.setEnabled(False)
         track_name = self._track_name_input.text().strip() or "Apple Music Recording"
