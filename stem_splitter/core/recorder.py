@@ -39,6 +39,8 @@ class Recorder:
             self._stream.stop()
             self._stream.close()
             self._stream = None
+        if not self._frames:
+            raise RuntimeError("No audio recorded — stop() called before any frames were captured")
         audio = np.concatenate(self._frames, axis=0)
         sf.write(str(dest_path), audio, SAMPLE_RATE)
         return dest_path

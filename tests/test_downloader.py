@@ -1,6 +1,7 @@
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+from subprocess import CalledProcessError
 from stem_splitter.core.downloader import is_valid_youtube_url, download_audio
 
 def test_valid_youtube_watch_url():
@@ -32,4 +33,10 @@ def test_download_audio_raises_if_no_wav_produced(tmp_path):
     with patch("stem_splitter.core.downloader.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stderr="")
         with pytest.raises(RuntimeError, match="did not produce a WAV"):
+            download_audio("https://www.youtube.com/watch?v=abc", tmp_path)
+
+def test_download_audio_raises_on_yt_dlp_nonzero_exit(tmp_path):
+    with patch("stem_splitter.core.downloader.subprocess.run") as mock_run:
+        mock_run.side_effect = CalledProcessError(1, "yt-dlp", stderr="Private video")
+        with pytest.raises(CalledProcessError):
             download_audio("https://www.youtube.com/watch?v=abc", tmp_path)

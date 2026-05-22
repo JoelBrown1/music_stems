@@ -38,3 +38,9 @@ def test_recorder_stop_writes_wav(tmp_path):
     mock_stream.close.assert_called_once()
     assert mock_write.called
     assert str(dest) in mock_write.call_args[0][0]
+
+def test_recorder_stop_raises_if_no_frames_recorded(tmp_path):
+    recorder = Recorder()
+    recorder._stream = MagicMock()
+    with pytest.raises(RuntimeError, match="No audio recorded"):
+        recorder.stop(tmp_path / "recording.wav")
