@@ -28,12 +28,13 @@ stem_splitter/
 │   ├── downloader.py     # yt-dlp wrapper — URL → local audio file
 │   ├── recorder.py       # sounddevice wrapper — BlackHole capture → WAV
 │   ├── separator.py      # Demucs wrapper — audio file → 6 stem WAVs
+│   ├── midi.py           # Basic Pitch wrapper — stem WAV → MIDI file
 │   └── output.py         # Write stems to named subfolder, handle collisions
 ├── ui/
 │   ├── main_window.py    # Single PyQt6 window, hosts all panels
 │   ├── source_panel.py   # Tabbed: YouTube URL / Local File / Apple Music
-│   ├── progress_panel.py # Download + separation progress bars
-│   └── output_panel.py   # Stem file list + Open Folder button
+│   ├── progress_panel.py # Download + separation + MIDI progress bars
+│   └── output_panel.py   # Stem file list, MIDI checkboxes, Open Folder button
 └── main.py               # Entry point
 ```
 
@@ -90,8 +91,13 @@ Appears after separation completes:
   vocals.wav   drums.wav   bass.wav
   guitar.wav   piano.wav   other.wav
 
-                              [Open Folder]
+  Convert to MIDI:
+  [✓] vocals  [ ] drums  [✓] bass  [✓] guitar  [✓] piano  [✓] other
+
+  [Convert Selected]                            [Open Folder]
 ```
+
+Drums is unchecked by default with a tooltip: "Drum-to-MIDI transcription is unreliable — results may be inaccurate." All other stems default to checked. Convert Selected runs Basic Pitch on each checked stem in the background with a progress bar; output `.mid` files appear in the same subfolder alongside the WAVs.
 
 ---
 
@@ -113,6 +119,9 @@ Source input
     │
     ▼
 [Write output]        ← ~/Documents/music_tracks/<Track Title>/
+    │
+    ▼
+[MIDI conversion]     ← Basic Pitch — selected stem WAVs → .mid files (optional)
 ```
 
 ### Apple Music capture detail
@@ -135,6 +144,7 @@ Source input
 | Demucs weights not cached | Auto-downloads on first run with dedicated progress bar |
 | Demucs separation fails | Error shown with log snippet; output folder not created |
 | Output folder already exists | Appends ` (2)`, ` (3)` etc. — never overwrites |
+| MIDI conversion fails for a stem | Error shown per-stem; other conversions continue |
 
 ---
 
@@ -148,6 +158,7 @@ Source input
 | Audio conversion | ffmpeg | via subprocess |
 | System audio capture | sounddevice | BlackHole 2ch as input device |
 | Stem separation | demucs | htdemucs_6s model, 6 stems |
+| Audio → MIDI | basic-pitch | Spotify open-source, runs locally |
 | Packaging | PyInstaller | macOS .app bundle |
 
 ---
@@ -157,12 +168,12 @@ Source input
 Stems written to `~/Documents/music_tracks/<Track Title>/`:
 
 ```
-vocals.wav
+vocals.wav    vocals.mid
 drums.wav
-bass.wav
-guitar.wav
-piano.wav
-other.wav
+bass.wav      bass.mid
+guitar.wav    guitar.mid
+piano.wav     piano.mid
+other.wav     other.mid
 ```
 
-If a folder with that name already exists, the app appends ` (2)`, ` (3)`, etc.
+MIDI files are optional — only produced for stems the user selects before clicking Convert Selected. Drums produces a WAV only by default. If a folder with that name already exists, the app appends ` (2)`, ` (3)`, etc.
