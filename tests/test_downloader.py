@@ -23,7 +23,7 @@ def test_download_audio_calls_yt_dlp(tmp_path):
         mock_run.return_value = MagicMock(returncode=0, stderr="")
         result = download_audio("https://www.youtube.com/watch?v=abc", tmp_path)
     args = mock_run.call_args[0][0]
-    assert "yt-dlp" in args
+    assert args[0].endswith("yt-dlp")
     assert "-x" in args
     assert "--audio-format" in args
     assert "wav" in args
