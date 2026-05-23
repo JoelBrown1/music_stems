@@ -5,4 +5,7 @@ basic-pitch
 sounddevice
 soundfile
 numpy
+librosa
+pretty_midi
+piano_transcription_inference
 pytest
