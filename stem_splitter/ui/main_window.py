@@ -58,10 +58,9 @@ class MainWindow(QMainWindow):
     def _on_convert_midi(self, stems: list):
         if not stems:
             return
-        stem_paths = [Path(s) for s in stems]
-        output_dir = stem_paths[0].parent
+        output_dir = stems[0]["wav_path"].parent
         self._progress.show_midi()
-        self._midi_worker = MidiWorker(stem_paths, output_dir)
+        self._midi_worker = MidiWorker(stems, output_dir)
         self._midi_worker.progress.connect(
             lambda stem, pct: self._progress.update_progress(stem, pct)
         )
