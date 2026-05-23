@@ -12,12 +12,17 @@ _NOTE_DURATION_SEC = 0.05
 _WINDOW_SEC = 0.04
 _VELOCITY_MIN = 40
 _VELOCITY_MAX = 127
+_VELOCITY_RMS_REFERENCE = 0.5   # RMS ceiling for full-velocity drum transient
+
+
+def _extract_window(audio: np.ndarray, sr: int, t: float) -> np.ndarray:
+    start = int(t * sr)
+    end = min(start + int(_WINDOW_SEC * sr), len(audio))
+    return audio[start:end]
 
 
 def _classify_onset(audio: np.ndarray, sr: int, t: float) -> int:
-    start = int(t * sr)
-    end = min(start + int(_WINDOW_SEC * sr), len(audio))
-    window = audio[start:end]
+    window = _extract_window(audio, sr, t)
     if len(window) < 4:
         return _SNARE
     S = np.abs(np.fft.rfft(window, n=512))
@@ -35,11 +40,11 @@ def _classify_onset(audio: np.ndarray, sr: int, t: float) -> int:
 
 
 def _onset_velocity(audio: np.ndarray, sr: int, t: float) -> int:
-    start = int(t * sr)
-    end = min(start + int(_WINDOW_SEC * sr), len(audio))
-    window = audio[start:end]
+    window = _extract_window(audio, sr, t)
+    if len(window) < 4:
+        return _VELOCITY_MIN
     rms = float(np.sqrt(np.mean(window ** 2) + 1e-9))
-    velocity = int(_VELOCITY_MIN + min(rms / 0.5, 1.0) * (_VELOCITY_MAX - _VELOCITY_MIN))
+    velocity = int(_VELOCITY_MIN + min(rms / _VELOCITY_RMS_REFERENCE, 1.0) * (_VELOCITY_MAX - _VELOCITY_MIN))
     return max(_VELOCITY_MIN, min(_VELOCITY_MAX, velocity))
 
 
@@ -60,11 +65,12 @@ def convert_drums_to_midi(wav_path: Path, output_dir: Path, sensitivity: float =
     drum_track = pretty_midi.Instrument(program=0, is_drum=True, name="Drums")
 
     for t in onset_times:
-        pitch = _classify_onset(audio, sr, float(t))
-        velocity = _onset_velocity(audio, sr, float(t))
+        t = float(t)
+        pitch = _classify_onset(audio, sr, t)
+        velocity = _onset_velocity(audio, sr, t)
         drum_track.notes.append(pretty_midi.Note(
             velocity=velocity, pitch=pitch,
-            start=float(t), end=float(t) + _NOTE_DURATION_SEC,
+            start=t, end=t + _NOTE_DURATION_SEC,
         ))
 
     midi.instruments.append(drum_track)

@@ -2,12 +2,11 @@ import numpy as np
 import pytest
 import pretty_midi
 from unittest.mock import patch
-from stem_splitter.core.drum_midi import convert_drums_to_midi, _classify_onset, _onset_velocity
+from stem_splitter.core.drum_midi import (
+    convert_drums_to_midi, _classify_onset, _onset_velocity,
+    _KICK, _SNARE, _CLOSED_HH, _OPEN_HH, _VELOCITY_MIN, _VELOCITY_MAX,
+)
 
-_KICK = 36
-_SNARE = 38
-_CLOSED_HH = 42
-_OPEN_HH = 46
 SR = 22050
 
 
@@ -34,8 +33,19 @@ def test_onset_velocity_scales_with_amplitude():
     v_quiet = _onset_velocity(quiet, SR, 0.0)
     v_loud = _onset_velocity(loud, SR, 0.0)
     assert v_quiet < v_loud
-    assert 40 <= v_quiet <= 127
-    assert 40 <= v_loud <= 127
+    assert _VELOCITY_MIN <= v_quiet <= _VELOCITY_MAX
+    assert _VELOCITY_MIN <= v_loud <= _VELOCITY_MAX
+
+
+def test_classify_onset_at_end_of_file():
+    audio = np.zeros(10, dtype=np.float32)
+    assert _classify_onset(audio, SR, 1.0) == _SNARE
+
+
+def test_onset_velocity_at_end_of_file():
+    audio = np.zeros(10, dtype=np.float32)
+    v = _onset_velocity(audio, SR, 1.0)
+    assert _VELOCITY_MIN <= v <= _VELOCITY_MAX
 
 
 @patch("stem_splitter.core.drum_midi.RNNOnsetProcessor")
