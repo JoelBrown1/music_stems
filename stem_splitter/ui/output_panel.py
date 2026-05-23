@@ -32,7 +32,7 @@ class OutputPanel(QWidget):
             row = QHBoxLayout()
 
             cb = QCheckBox(stem)
-            cb.setChecked(stem != "drums")
+            cb.setChecked(True)
             self._checkboxes[stem] = cb
             row.addWidget(cb)
             row.addStretch()
@@ -83,6 +83,18 @@ class OutputPanel(QWidget):
 
     def _on_convert(self):
         if not self._output_dir:
+            return
+        invalid = [
+            stem for stem, cb in self._checkboxes.items()
+            if cb.isChecked() and not self._params_widgets[stem].is_valid()
+        ]
+        if invalid:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self,
+                "Invalid Parameters",
+                f"Fix frequency range (min must be < max) for: {', '.join(invalid)}",
+            )
             return
         selected = [
             {

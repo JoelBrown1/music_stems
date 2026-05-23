@@ -19,12 +19,12 @@ class MidiParamsWidget(QWidget):
             return
 
         if stem == "drums":
-            self._sensitivity = self._add_slider(layout, "Sensitivity", 10, 90, int(DEFAULTS["drums"].sensitivity * 100))
+            self._sensitivity = self._add_slider(layout, "Sensitivity", 10, 90, int(DEFAULTS["drums"].sensitivity * 100), step=5)
         else:
             d = DEFAULTS[stem]
-            self._onset = self._add_slider(layout, "Onset threshold", 10, 90, int(d.onset_threshold * 100))
-            self._frame = self._add_slider(layout, "Frame threshold", 10, 90, int(d.frame_threshold * 100))
-            self._min_length = self._add_slider(layout, "Min note length (ms)", 10, 500, d.minimum_note_length)
+            self._onset = self._add_slider(layout, "Onset threshold", 10, 90, int(d.onset_threshold * 100), step=5)
+            self._frame = self._add_slider(layout, "Frame threshold", 10, 90, int(d.frame_threshold * 100), step=5)
+            self._min_length = self._add_slider(layout, "Min note length (ms)", 10, 500, d.minimum_note_length, step=10)
 
             freq_row = QHBoxLayout()
             freq_row.addWidget(QLabel("Min freq (Hz)"))
@@ -50,11 +50,13 @@ class MidiParamsWidget(QWidget):
         self._reset_btn.clicked.connect(self._reset)
         layout.addWidget(self._reset_btn)
 
-    def _add_slider(self, layout: QVBoxLayout, label: str, min_val: int, max_val: int, value: int) -> QSlider:
+    def _add_slider(self, layout: QVBoxLayout, label: str, min_val: int, max_val: int, value: int, step: int = 1) -> QSlider:
         row = QHBoxLayout()
         row.addWidget(QLabel(label))
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setRange(min_val, max_val)
+        slider.setSingleStep(step)
+        slider.setPageStep(step * 2)
         slider.setValue(value)
         val_label = QLabel(str(value))
         val_label.setFixedWidth(36)
@@ -69,6 +71,11 @@ class MidiParamsWidget(QWidget):
         style = "border: 1px solid red;" if invalid else ""
         self._min_freq.setStyleSheet(style)
         self._max_freq.setStyleSheet(style)
+
+    def is_valid(self) -> bool:
+        if self._stem in ("piano", "drums"):
+            return True
+        return self._min_freq.value() < self._max_freq.value()
 
     def get_params(self) -> MidiParams:
         if self._stem == "piano":
