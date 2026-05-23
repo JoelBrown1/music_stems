@@ -1,5 +1,9 @@
 import subprocess
+import sys
 from pathlib import Path
+
+_BIN_DIR = Path(sys.executable).parent
+_YT_DLP = str(_BIN_DIR / "yt-dlp")
 
 def is_valid_youtube_url(url: str) -> bool:
     return "youtube.com/watch" in url or "youtu.be/" in url
@@ -7,7 +11,7 @@ def is_valid_youtube_url(url: str) -> bool:
 def download_audio(url: str, dest_dir: Path) -> Path:
     dest_dir.mkdir(parents=True, exist_ok=True)
     subprocess.run(
-        ["yt-dlp", "-x", "--audio-format", "wav",
+        [_YT_DLP, "-x", "--audio-format", "wav",
          "-o", str(dest_dir / "%(title)s.%(ext)s"), url],
         capture_output=True, text=True, check=True,
     )
