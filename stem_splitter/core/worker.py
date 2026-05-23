@@ -4,7 +4,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from stem_splitter.core.downloader import download_audio
 from stem_splitter.core.separator import separate
 from stem_splitter.core.output import make_output_dir
-from stem_splitter.core.midi import convert_to_midi
+from stem_splitter.core.midi import convert_stem_to_midi
 
 
 class PipelineWorker(QThread):
@@ -46,17 +46,21 @@ class MidiWorker(QThread):
     finished = pyqtSignal()
     error = pyqtSignal(str, str)      # stem_name, message
 
-    def __init__(self, stems: list[Path], output_dir: Path):
+    def __init__(self, stems: list, output_dir: Path):
+        # stems: list of {"stem": str, "wav_path": Path, "params": MidiParams}
         super().__init__()
         self.stems = stems
         self.output_dir = output_dir
 
     def run(self):
         total = len(self.stems)
-        for i, wav_path in enumerate(self.stems):
+        for i, item in enumerate(self.stems):
+            stem = item["stem"]
+            wav_path = item["wav_path"]
+            params = item["params"]
             try:
-                self.progress.emit(wav_path.stem, int(i / total * 100))
-                convert_to_midi(wav_path, self.output_dir)
+                self.progress.emit(stem, int(i / total * 100))
+                convert_stem_to_midi(stem, wav_path, self.output_dir, params)
             except Exception as e:
-                self.error.emit(wav_path.stem, str(e))
+                self.error.emit(stem, str(e))
         self.finished.emit()
