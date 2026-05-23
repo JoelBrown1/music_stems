@@ -14,11 +14,6 @@ def convert_stem_to_midi(stem: str, wav_path: Path, output_dir: Path, params: Mi
     return _convert_with_basic_pitch(wav_path, output_dir, params)
 
 
-# Backward-compatible shim for worker.py until Task 6 updates MidiWorker.
-def convert_to_midi(wav_path: Path, output_dir: Path) -> Path:
-    return _convert_with_basic_pitch(wav_path, output_dir, MidiParams())
-
-
 def _convert_with_basic_pitch(wav_path: Path, output_dir: Path, params: MidiParams) -> Path:
     predict_and_save(
         [str(wav_path)],
