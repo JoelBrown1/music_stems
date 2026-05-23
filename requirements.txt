@@ -6,6 +6,7 @@ sounddevice
 soundfile
 numpy
 librosa
+madmom
 pretty_midi
 piano_transcription_inference
 pytest
