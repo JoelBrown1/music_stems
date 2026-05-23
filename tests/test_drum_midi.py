@@ -1,45 +1,69 @@
 import numpy as np
-import soundfile as sf
-import pretty_midi
 import pytest
-from pathlib import Path
-from stem_splitter.core.drum_midi import convert_drums_to_midi
+import pretty_midi
+from unittest.mock import patch
+from stem_splitter.core.drum_midi import convert_drums_to_midi, _classify_onset, _onset_velocity
+
+_KICK = 36
+_SNARE = 38
+_CLOSED_HH = 42
+_OPEN_HH = 46
+SR = 22050
 
 
-@pytest.fixture
-def drum_wav(tmp_path):
-    sr = 22050
-    audio = np.zeros(sr * 4, dtype=np.float32)
-    for t in [0.5, 1.0, 1.5, 2.0]:
-        idx = int(t * sr)
-        audio[idx] = 1.0
-    path = tmp_path / "drums.wav"
-    sf.write(str(path), audio, sr)
-    return path
+def _sine(freq, duration=0.04, amplitude=0.8):
+    t = np.linspace(0, duration, int(duration * SR), endpoint=False)
+    return (np.sin(2 * np.pi * freq * t) * amplitude).astype(np.float32)
 
 
-def test_convert_drums_to_midi_returns_correct_path_and_creates_file(drum_wav, tmp_path):
-    result = convert_drums_to_midi(drum_wav, tmp_path, sensitivity=0.5)
+def test_classify_kick():
+    assert _classify_onset(_sine(80), SR, 0.0) == _KICK
+
+
+def test_classify_hihat():
+    assert _classify_onset(_sine(8000), SR, 0.0) in (_CLOSED_HH, _OPEN_HH)
+
+
+def test_classify_snare():
+    assert _classify_onset(_sine(1000), SR, 0.0) == _SNARE
+
+
+def test_onset_velocity_scales_with_amplitude():
+    quiet = np.ones(1000, dtype=np.float32) * 0.05
+    loud = np.ones(1000, dtype=np.float32) * 0.5
+    v_quiet = _onset_velocity(quiet, SR, 0.0)
+    v_loud = _onset_velocity(loud, SR, 0.0)
+    assert v_quiet < v_loud
+    assert 40 <= v_quiet <= 127
+    assert 40 <= v_loud <= 127
+
+
+@patch("stem_splitter.core.drum_midi.RNNOnsetProcessor")
+@patch("stem_splitter.core.drum_midi.OnsetPeakPickingProcessor")
+@patch("stem_splitter.core.drum_midi.librosa.load")
+def test_no_onsets_raises(mock_load, MockPeak, MockRNN, tmp_path):
+    wav = tmp_path / "drums.wav"
+    wav.touch()
+    MockRNN.return_value.return_value = np.zeros(200, dtype=np.float32)
+    MockPeak.return_value.return_value = np.array([])
+    mock_load.return_value = (np.zeros(1000, dtype=np.float32), SR)
+    with pytest.raises(RuntimeError, match="No drum hits detected"):
+        convert_drums_to_midi(wav, tmp_path)
+
+
+@patch("stem_splitter.core.drum_midi.RNNOnsetProcessor")
+@patch("stem_splitter.core.drum_midi.OnsetPeakPickingProcessor")
+@patch("stem_splitter.core.drum_midi.librosa.load")
+def test_midi_output_is_valid_drum_track(mock_load, MockPeak, MockRNN, tmp_path):
+    wav = tmp_path / "drums.wav"
+    wav.touch()
+    MockRNN.return_value.return_value = np.zeros(200, dtype=np.float32)
+    MockPeak.return_value.return_value = np.array([0.25, 0.75])
+    mock_load.return_value = (np.zeros(int(SR * 2), dtype=np.float32), SR)
+    result = convert_drums_to_midi(wav, tmp_path)
     assert result == tmp_path / "drums.mid"
     assert result.exists()
-
-
-def test_convert_drums_to_midi_produces_drum_track_with_notes(drum_wav, tmp_path):
-    result = convert_drums_to_midi(drum_wav, tmp_path, sensitivity=0.5)
     midi = pretty_midi.PrettyMIDI(str(result))
     assert len(midi.instruments) == 1
-    instrument = midi.instruments[0]
-    assert instrument.is_drum is True
-    assert len(instrument.notes) > 0
-    for note in instrument.notes:
-        assert note.velocity == 100
-        assert note.pitch in (36, 38, 42, 46)
-
-
-def test_convert_drums_to_midi_silent_wav_raises(tmp_path):
-    sr = 22050
-    audio = np.zeros(sr * 2, dtype=np.float32)
-    wav_path = tmp_path / "silence.wav"
-    sf.write(str(wav_path), audio, sr)
-    with pytest.raises(RuntimeError, match="No drum hits detected"):
-        convert_drums_to_midi(wav_path, tmp_path, sensitivity=0.5)
+    assert midi.instruments[0].is_drum is True
+    assert len(midi.instruments[0].notes) == 2
