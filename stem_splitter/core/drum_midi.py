@@ -7,14 +7,17 @@ _KICK = 36
 _SNARE = 38
 _CLOSED_HH = 42
 _OPEN_HH = 46
-_WINDOW_SEC = 0.05  # 50 ms spectral analysis window
+_WINDOW_SEC = 0.05
+_NOTE_DURATION_SEC = 0.1
+_SENSITIVITY_SCALE = 0.1
+_CENTROID_EPS = 1e-9
 
 
 def convert_drums_to_midi(wav_path: Path, output_dir: Path, sensitivity: float = 0.50) -> Path:
     audio, sr = librosa.load(str(wav_path), sr=None, mono=True)
 
     onset_frames = librosa.onset.onset_detect(
-        y=audio, sr=sr, backtrack=True, delta=sensitivity * 0.1
+        y=audio, sr=sr, backtrack=True, delta=sensitivity * _SENSITIVITY_SCALE
     )
     if len(onset_frames) == 0:
         raise RuntimeError("No drum hits detected — try lowering sensitivity")
@@ -30,12 +33,9 @@ def convert_drums_to_midi(wav_path: Path, output_dir: Path, sensitivity: float =
         end = min(start + window_samples, len(audio))
         window = audio[start:end]
 
-        if len(window) < 2:
-            centroid = 1000.0
-        else:
-            S = np.abs(np.fft.rfft(window))
-            freqs = np.fft.rfftfreq(len(window), d=1.0 / sr)
-            centroid = float(np.sum(freqs * S) / (np.sum(S) + 1e-9))
+        S = np.abs(np.fft.rfft(window))
+        freqs = np.fft.rfftfreq(len(window), d=1.0 / sr)
+        centroid = float(np.sum(freqs * S) / (np.sum(S) + _CENTROID_EPS))
 
         if centroid < 200:
             pitch = _KICK
@@ -47,7 +47,7 @@ def convert_drums_to_midi(wav_path: Path, output_dir: Path, sensitivity: float =
             pitch = _OPEN_HH
 
         note = pretty_midi.Note(
-            velocity=100, pitch=pitch, start=float(t), end=float(t) + 0.1
+            velocity=100, pitch=pitch, start=float(t), end=float(t) + _NOTE_DURATION_SEC
         )
         drum_track.notes.append(note)
 
