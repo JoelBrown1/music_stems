@@ -57,6 +57,48 @@ class PlayerEngine:
         self._length = max(a.shape[0] for a in self._arrays.values())
         self._loop_end = self._length
 
+    def set_volume(self, stem: str, value: float) -> None:
+        self._volumes[stem] = max(0.0, min(1.0, value))
+
+    def set_mute(self, stem: str, muted: bool) -> None:
+        self._mutes[stem] = muted
+
+    def set_solo(self, stem: str, soloed: bool) -> None:
+        self._solos[stem] = soloed
+
+    def _mix_chunk(self, outdata: np.ndarray, frames: int) -> None:
+        outdata[:] = 0.0
+
+        with self._lock:
+            arrays = self._arrays
+            pos = self._position
+            loop_enabled = self._loop_enabled
+            loop_start = self._loop_start
+            loop_end = self._loop_end
+            total_len = self._length
+
+        any_solo = any(self._solos.values())
+
+        for stem, arr in arrays.items():
+            if self._mutes.get(stem, False):
+                continue
+            if any_solo and not self._solos.get(stem, False):
+                continue
+            end = min(pos + frames, arr.shape[0])
+            if end <= pos:
+                continue
+            chunk = arr[pos:end] * self._volumes.get(stem, 1.0)
+            outdata[:chunk.shape[0]] += chunk
+
+        with self._lock:
+            new_pos = pos + frames
+            if loop_enabled and loop_end > loop_start and new_pos >= loop_end:
+                new_pos = loop_start
+            elif not loop_enabled and new_pos >= total_len:
+                new_pos = total_len
+                self._is_playing = False
+            self._position = new_pos
+
     @property
     def position(self) -> float:
         with self._lock:
