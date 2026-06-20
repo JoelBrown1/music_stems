@@ -25,6 +25,7 @@ class PlayerEngine:
         self._loop_enabled: bool = False
         self._loop_start: int = 0
         self._loop_end: int = 0
+        self._original_arrays: dict[str, np.ndarray] = {}
 
         self._load_stems(stem_paths)
 
@@ -58,6 +59,7 @@ class PlayerEngine:
 
         self._length = max(a.shape[0] for a in self._arrays.values())
         self._loop_end = self._length
+        self._original_arrays = dict(self._arrays)
 
     def play(self) -> None:
         if self._is_playing or not self._arrays:
@@ -128,18 +130,26 @@ class PlayerEngine:
             self._loop_end = end
 
     def stretch(self, rate: float) -> None:
-        if rate == 1.0:
-            return
-
         with self._lock:
-            current_arrays = dict(self._arrays)
+            originals = dict(self._original_arrays)
+            orig_length = originals[next(iter(originals))].shape[0] if originals else 0
             old_length = self._length
             old_pos = self._position
             old_loop_start = self._loop_start
             old_loop_end = self._loop_end
 
+        if rate == 1.0:
+            with self._lock:
+                self._arrays = dict(originals)
+                self._length = orig_length
+                scale = orig_length / old_length if old_length > 0 else 1.0
+                self._position = int(old_pos * scale)
+                self._loop_start = int(old_loop_start * scale)
+                self._loop_end = int(old_loop_end * scale)
+            return
+
         new_arrays: dict[str, np.ndarray] = {}
-        for stem, arr in current_arrays.items():
+        for stem, arr in originals.items():
             channels = [
                 librosa.effects.time_stretch(arr[:, ch], rate=rate)
                 for ch in range(arr.shape[1])

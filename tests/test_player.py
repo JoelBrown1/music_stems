@@ -187,9 +187,11 @@ def test_stretch_preserves_relative_position(tmp_path):
     assert abs(engine.position - 0.5) < 0.01
 
 
-def test_stretch_rate_1_is_noop(tmp_path):
+def test_stretch_rate_1_restores_original_length(tmp_path):
     _wav(tmp_path / 'vocals.wav', samples=44100)
     engine = PlayerEngine({'vocals': tmp_path / 'vocals.wav'})
-    original_arrays = engine._arrays
+    original_len = engine._length
+    engine.stretch(0.5)
+    assert engine._length != original_len
     engine.stretch(1.0)
-    assert engine._arrays is original_arrays  # same dict object, no-op
+    assert engine._length == original_len
