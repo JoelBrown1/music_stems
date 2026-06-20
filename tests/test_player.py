@@ -93,3 +93,37 @@ def test_muted_solo_produces_silence(tmp_path):
     outdata = np.zeros((100, 2), dtype='float32')
     engine._mix_chunk(outdata, 100)
     np.testing.assert_allclose(outdata, 0.0)
+
+
+def test_seek_updates_position(tmp_path):
+    _wav(tmp_path / 'vocals.wav', samples=44100)
+    engine = PlayerEngine({'vocals': tmp_path / 'vocals.wav'})
+    engine.seek(0.5)
+    assert abs(engine.position - 0.5) < 0.001
+
+
+def test_seek_clamps_to_valid_range(tmp_path):
+    _wav(tmp_path / 'vocals.wav')
+    engine = PlayerEngine({'vocals': tmp_path / 'vocals.wav'})
+    engine.seek(2.0)
+    assert engine.position == 1.0
+    engine.seek(-1.0)
+    assert engine.position == 0.0
+
+
+def test_mix_chunk_advances_position(tmp_path):
+    _wav(tmp_path / 'vocals.wav', samples=44100)
+    engine = PlayerEngine({'vocals': tmp_path / 'vocals.wav'})
+    outdata = np.zeros((512, 2), dtype='float32')
+    engine._mix_chunk(outdata, 512)
+    expected = 512 / 44100
+    assert abs(engine.position - expected) < 0.001
+
+
+def test_stop_resets_position(tmp_path):
+    _wav(tmp_path / 'vocals.wav')
+    engine = PlayerEngine({'vocals': tmp_path / 'vocals.wav'})
+    engine.seek(0.5)
+    engine.stop()
+    assert engine.position == 0.0
+    assert engine.is_playing is False

@@ -57,6 +57,45 @@ class PlayerEngine:
         self._length = max(a.shape[0] for a in self._arrays.values())
         self._loop_end = self._length
 
+    def play(self) -> None:
+        if self._is_playing or not self._arrays:
+            return
+
+        def _callback(outdata, frames, time, status):
+            self._mix_chunk(outdata, frames)
+            if not self._is_playing:
+                raise sd.CallbackStop()
+
+        self._is_playing = True
+        self._stream = sd.OutputStream(
+            samplerate=self._sample_rate,
+            channels=2,
+            dtype='float32',
+            callback=_callback,
+        )
+        self._stream.start()
+
+    def pause(self) -> None:
+        self._is_playing = False
+        if self._stream:
+            self._stream.stop()
+            self._stream.close()
+            self._stream = None
+
+    def stop(self) -> None:
+        self._is_playing = False
+        if self._stream:
+            self._stream.stop()
+            self._stream.close()
+            self._stream = None
+        with self._lock:
+            self._position = 0
+
+    def seek(self, fraction: float) -> None:
+        fraction = max(0.0, min(1.0, fraction))
+        with self._lock:
+            self._position = int(fraction * self._length)
+
     def set_volume(self, stem: str, value: float) -> None:
         self._volumes[stem] = max(0.0, min(1.0, value))
 
