@@ -177,6 +177,9 @@ class PlayerWindow(QDialog):
         if parent is not None:
             self.move(parent.geometry().right() + 8, parent.geometry().top())
 
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setFocus()
+
     def _build_mixer_strips(self) -> QGroupBox:
         box = QGroupBox("Stems")
         layout = QVBoxLayout(box)
@@ -398,3 +401,9 @@ class PlayerWindow(QDialog):
         self._timer.stop()
         self._engine.stop()
         super().closeEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Space:
+            self._on_play_pause()
+        else:
+            super().keyPressEvent(event)
