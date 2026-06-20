@@ -127,3 +127,44 @@ def test_stop_resets_position(tmp_path):
     engine.stop()
     assert engine.position == 0.0
     assert engine.is_playing is False
+
+
+def test_loop_wraps_position_at_loop_end(tmp_path):
+    _wav(tmp_path / 'vocals.wav', samples=44100)
+    engine = PlayerEngine({'vocals': tmp_path / 'vocals.wav'})
+    engine.set_loop_start(0.1)
+    engine.set_loop_end(0.2)
+    engine.set_loop_enabled(True)
+
+    # seek just before loop end
+    loop_end_sample = int(0.2 * 44100)
+    engine.seek((loop_end_sample - 10) / 44100)
+
+    outdata = np.zeros((512, 2), dtype='float32')
+    engine._mix_chunk(outdata, 512)
+
+    # position should have wrapped back to loop_start
+    assert engine.position < 0.2
+    assert engine.position >= 0.1
+
+
+def test_loop_disabled_does_not_wrap(tmp_path):
+    _wav(tmp_path / 'vocals.wav', samples=44100)
+    engine = PlayerEngine({'vocals': tmp_path / 'vocals.wav'})
+    engine.set_loop_start(0.1)
+    engine.set_loop_end(0.2)
+    engine.set_loop_enabled(False)
+
+    engine.seek(0.19)
+    outdata = np.zeros((512, 2), dtype='float32')
+    engine._mix_chunk(outdata, 512)
+    assert engine.position > 0.2
+
+
+def test_set_loop_swaps_if_start_greater_than_end(tmp_path):
+    _wav(tmp_path / 'vocals.wav', samples=44100)
+    engine = PlayerEngine({'vocals': tmp_path / 'vocals.wav'})
+    engine.set_loop_start(0.8)
+    engine.set_loop_end(0.2)
+    with engine._lock:
+        assert engine._loop_start < engine._loop_end

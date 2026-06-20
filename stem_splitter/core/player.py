@@ -96,6 +96,30 @@ class PlayerEngine:
         with self._lock:
             self._position = int(fraction * self._length)
 
+    def set_loop_enabled(self, enabled: bool) -> None:
+        with self._lock:
+            self._loop_enabled = enabled
+
+    def set_loop_start(self, fraction: float) -> None:
+        fraction = max(0.0, min(1.0, fraction))
+        with self._lock:
+            start = int(fraction * self._length)
+            end = self._loop_end
+            if start >= end:
+                start, end = end, start
+            self._loop_start = start
+            self._loop_end = end
+
+    def set_loop_end(self, fraction: float) -> None:
+        fraction = max(0.0, min(1.0, fraction))
+        with self._lock:
+            end = int(fraction * self._length)
+            start = self._loop_start
+            if end <= start:
+                start, end = end, start
+            self._loop_start = start
+            self._loop_end = end
+
     def set_volume(self, stem: str, value: float) -> None:
         self._volumes[stem] = max(0.0, min(1.0, value))
 
