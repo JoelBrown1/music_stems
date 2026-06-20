@@ -154,6 +154,7 @@ class PlayerEngine:
 
         with self._lock:
             new_pos = pos + frames
+            # loop_end > loop_start guard: equal values disable looping silently
             if loop_enabled and loop_end > loop_start and new_pos >= loop_end:
                 new_pos = loop_start
             elif not loop_enabled and new_pos >= total_len:
