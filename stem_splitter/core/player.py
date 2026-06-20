@@ -67,13 +67,18 @@ class PlayerEngine:
                 raise sd.CallbackStop()
 
         self._is_playing = True
-        self._stream = sd.OutputStream(
-            samplerate=self._sample_rate,
-            channels=2,
-            dtype='float32',
-            callback=_callback,
-        )
-        self._stream.start()
+        try:
+            self._stream = sd.OutputStream(
+                samplerate=self._sample_rate,
+                channels=2,
+                dtype='float32',
+                callback=_callback,
+            )
+            self._stream.start()
+        except Exception:
+            self._is_playing = False
+            self._stream = None
+            raise
 
     def pause(self) -> None:
         self._is_playing = False

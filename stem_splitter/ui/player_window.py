@@ -381,9 +381,14 @@ class PlayerWindow(QDialog):
     def _on_tick(self) -> None:
         pos = self._engine.position
         self._scrubber.set_position(pos)
-        elapsed = pos * self._engine.duration
-        self._time_label.setText(f"{_fmt(elapsed)} / {_fmt(self._engine.duration)}")
+        dur = self._engine.duration
+        elapsed = pos * dur
+        self._time_label.setText(f"{_fmt(elapsed)} / {_fmt(dur)}")
         self._play_btn.setText('⏸ Pause' if self._engine.is_playing else '▶ Play')
+        if self._loop_btn.isChecked() and dur > 0:
+            a_sec, b_sec = self._engine.loop_bounds_seconds()
+            self._scrubber.set_loop_start(a_sec / dur)
+            self._scrubber.set_loop_end(b_sec / dur)
 
     def closeEvent(self, event):
         self._timer.stop()
