@@ -76,8 +76,7 @@ class PlayerEngine:
             loop_start = self._loop_start
             loop_end = self._loop_end
             total_len = self._length
-
-        any_solo = any(self._solos.values())
+            any_solo = any(self._solos.values())
 
         for stem, arr in arrays.items():
             if self._mutes.get(stem, False):
