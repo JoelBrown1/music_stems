@@ -168,3 +168,28 @@ def test_set_loop_swaps_if_start_greater_than_end(tmp_path):
     engine.set_loop_end(0.2)
     with engine._lock:
         assert engine._loop_start < engine._loop_end
+
+
+def test_stretch_halves_rate_doubles_length(tmp_path):
+    _wav(tmp_path / 'vocals.wav', samples=44100)
+    engine = PlayerEngine({'vocals': tmp_path / 'vocals.wav'})
+    original_len = engine._length
+    engine.stretch(0.5)
+    # half speed = double length (within 5% tolerance for phase vocoder)
+    assert abs(engine._length - original_len * 2) < original_len * 0.05
+
+
+def test_stretch_preserves_relative_position(tmp_path):
+    _wav(tmp_path / 'vocals.wav', samples=44100)
+    engine = PlayerEngine({'vocals': tmp_path / 'vocals.wav'})
+    engine.seek(0.5)
+    engine.stretch(0.5)
+    assert abs(engine.position - 0.5) < 0.01
+
+
+def test_stretch_rate_1_is_noop(tmp_path):
+    _wav(tmp_path / 'vocals.wav', samples=44100)
+    engine = PlayerEngine({'vocals': tmp_path / 'vocals.wav'})
+    original_arrays = engine._arrays
+    engine.stretch(1.0)
+    assert engine._arrays is original_arrays  # same dict object, no-op

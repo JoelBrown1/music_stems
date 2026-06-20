@@ -120,6 +120,35 @@ class PlayerEngine:
             self._loop_start = start
             self._loop_end = end
 
+    def stretch(self, rate: float) -> None:
+        if rate == 1.0:
+            return
+
+        with self._lock:
+            current_arrays = dict(self._arrays)
+            old_length = self._length
+            old_pos = self._position
+            old_loop_start = self._loop_start
+            old_loop_end = self._loop_end
+
+        new_arrays: dict[str, np.ndarray] = {}
+        for stem, arr in current_arrays.items():
+            channels = [
+                librosa.effects.time_stretch(arr[:, ch], rate=rate)
+                for ch in range(arr.shape[1])
+            ]
+            new_arrays[stem] = np.stack(channels, axis=1).astype('float32')
+
+        new_length = max(a.shape[0] for a in new_arrays.values()) if new_arrays else 0
+        scale = new_length / old_length if old_length > 0 else 1.0
+
+        with self._lock:
+            self._arrays = new_arrays
+            self._length = new_length
+            self._position = int(old_pos * scale)
+            self._loop_start = int(old_loop_start * scale)
+            self._loop_end = int(old_loop_end * scale)
+
     def set_volume(self, stem: str, value: float) -> None:
         self._volumes[stem] = max(0.0, min(1.0, value))
 
