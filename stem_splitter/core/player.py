@@ -205,3 +205,13 @@ class PlayerEngine:
     def is_playing(self) -> bool:
         with self._lock:
             return self._is_playing
+
+    @property
+    def available_stems(self) -> frozenset[str]:
+        return frozenset(self._available)
+
+    def loop_bounds_seconds(self) -> tuple[float, float]:
+        with self._lock:
+            a = self._loop_start / self._sample_rate if self._sample_rate > 0 else 0.0
+            b = self._loop_end / self._sample_rate if self._sample_rate > 0 else 0.0
+        return a, b

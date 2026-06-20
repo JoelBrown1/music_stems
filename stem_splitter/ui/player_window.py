@@ -184,7 +184,7 @@ class PlayerWindow(QDialog):
 
         for stem in STEMS:
             row = QHBoxLayout()
-            available = stem in self._engine._available
+            available = stem in self._engine.available_stems
 
             name = QLabel(stem)
             name.setFixedWidth(55)
@@ -327,9 +327,7 @@ class PlayerWindow(QDialog):
         self._update_loop_label()
 
     def _update_loop_label(self) -> None:
-        with self._engine._lock:
-            a_sec = self._engine._loop_start / self._engine._sample_rate
-            b_sec = self._engine._loop_end / self._engine._sample_rate
+        a_sec, b_sec = self._engine.loop_bounds_seconds()
         self._loop_label.setText(f"A: {_fmt(a_sec)}  B: {_fmt(b_sec)}")
 
     def _build_speed_control(self) -> QGroupBox:
@@ -373,7 +371,12 @@ class PlayerWindow(QDialog):
         self._processing_label.setVisible(False)
         self._apply_btn.setEnabled(True)
         if resume:
-            self._engine.play()
+            try:
+                self._engine.play()
+            except sd.PortAudioError as exc:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "Audio Error",
+                                    f"No audio output device found:\n{exc}")
 
     def _on_tick(self) -> None:
         pos = self._engine.position
