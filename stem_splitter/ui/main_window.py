@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QMessageBox
 from stem_splitter.ui.source_panel import SourcePanel
 from stem_splitter.ui.progress_panel import ProgressPanel
 from stem_splitter.ui.output_panel import OutputPanel
+from stem_splitter.ui.player_window import PlayerWindow
 from stem_splitter.core.worker import PipelineWorker, MidiWorker
 
 
@@ -13,6 +14,7 @@ class MainWindow(QMainWindow):
         self.setMinimumWidth(600)
         self._worker: PipelineWorker | None = None
         self._midi_worker: MidiWorker | None = None
+        self._player: PlayerWindow | None = None
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -54,6 +56,10 @@ class MainWindow(QMainWindow):
         self._set_pipeline_running(False)
         self._progress.reset()
         self._output.show_results(output_dir)
+        if self._player is not None:
+            self._player.close()
+        self._player = PlayerWindow(output_dir, parent=self)
+        self._player.show()
 
     def _on_convert_midi(self, stems: list):
         if not stems:
