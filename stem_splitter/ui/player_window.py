@@ -246,16 +246,18 @@ class PlayerWindow(QDialog):
         label.setText(f"{value}%")
 
     def _build_scrubber_section(self) -> QWidget:
-        from PyQt6.QtWidgets import QWidget as _W
+        from PyQt6.QtWidgets import QWidget as _W, QVBoxLayout
         w = _W()
-        row = QHBoxLayout(w)
+        col = QVBoxLayout(w)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(2)
         self._time_label = QLabel("0:00 / 0:00")
         self._scrubber = ScrubberWidget()
         self._scrubber.seek_requested.connect(self._engine.seek)
         self._scrubber.loop_start_changed.connect(self._engine.set_loop_start)
         self._scrubber.loop_end_changed.connect(self._engine.set_loop_end)
-        row.addWidget(self._time_label)
-        row.addWidget(self._scrubber)
+        col.addWidget(self._time_label)
+        col.addWidget(self._scrubber)
         return w
 
     def _build_transport(self) -> QWidget:
