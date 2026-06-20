@@ -64,8 +64,10 @@ class PlayerEngine:
 
     @property
     def duration(self) -> float:
-        return self._length / self._sample_rate if self._sample_rate > 0 else 0.0
+        with self._lock:
+            return self._length / self._sample_rate if self._sample_rate > 0 else 0.0
 
     @property
     def is_playing(self) -> bool:
-        return self._is_playing
+        with self._lock:
+            return self._is_playing
