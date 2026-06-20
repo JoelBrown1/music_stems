@@ -19,7 +19,7 @@ def test_convert_piano_to_midi_returns_correct_path(tmp_path):
     assert result == tmp_path / "piano.mid"
 
 
-def test_convert_piano_to_midi_calls_inference_with_correct_dest(tmp_path):
+def test_convert_piano_to_midi_calls_transcribe_with_correct_dest(tmp_path):
     wav_path = tmp_path / "piano.wav"
     wav_path.write_bytes(b"fake")
     mock_audio = np.zeros(1000, dtype=np.float32)
@@ -31,7 +31,7 @@ def test_convert_piano_to_midi_calls_inference_with_correct_dest(tmp_path):
         convert_piano_to_midi(wav_path, tmp_path)
 
     expected_dest = str(tmp_path / "piano.mid")
-    mock_t.inference.assert_called_once_with(mock_audio, expected_dest)
+    mock_t.transcribe.assert_called_once_with(mock_audio, expected_dest)
 
 
 def test_convert_piano_to_midi_uses_cpu_device(tmp_path):
