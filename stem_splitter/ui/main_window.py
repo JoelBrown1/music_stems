@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QMessageBox
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QMessageBox, QPushButton
 from stem_splitter.ui.source_panel import SourcePanel
 from stem_splitter.ui.progress_panel import ProgressPanel
 from stem_splitter.ui.output_panel import OutputPanel
 from stem_splitter.ui.player_window import PlayerWindow
+from stem_splitter.ui.load_stems_dialog import LoadStemsDialog
 from stem_splitter.core.worker import PipelineWorker, MidiWorker
 
 
@@ -32,6 +33,16 @@ class MainWindow(QMainWindow):
 
         self._source.start_pipeline.connect(self._on_start_pipeline)
         self._output.convert_midi_requested.connect(self._on_convert_midi)
+
+        menu_bar = self.menuBar()
+        file_menu = menu_bar.addMenu("File")
+        open_stems_action = file_menu.addAction("Open Stems…")
+        open_stems_action.setShortcut("Ctrl+O")
+        open_stems_action.triggered.connect(self._open_load_stems_dialog)
+
+        open_btn = QPushButton("Open Stems…")
+        open_btn.clicked.connect(self._open_load_stems_dialog)
+        layout.addWidget(open_btn)
 
     def _set_pipeline_running(self, running: bool):
         self._source.setEnabled(not running)
@@ -79,6 +90,14 @@ class MainWindow(QMainWindow):
             )
         )
         self._midi_worker.start()
+
+    def _open_load_stems_dialog(self) -> None:
+        dlg = LoadStemsDialog(parent=self)
+        if dlg.exec() and dlg.selected_dir:
+            if self._player is not None:
+                self._player.close()
+            self._player = PlayerWindow(dlg.selected_dir, parent=self)
+            self._player.show()
 
     def _on_error(self, message: str):
         self._set_pipeline_running(False)
