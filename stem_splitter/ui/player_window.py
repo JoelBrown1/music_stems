@@ -374,6 +374,7 @@ class PlayerWindow(QDialog):
         stem_paths = {stem: output_dir / f"{stem}.wav" for stem in STEMS}
         self._engine = PlayerEngine(stem_paths)
         self._stretch_worker: StretchWorker | None = None
+        self._bpm_worker: BpmDetectWorker | None = None
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._build_mixer_strips())
@@ -381,6 +382,11 @@ class PlayerWindow(QDialog):
         layout.addWidget(self._build_transport())
         layout.addWidget(self._build_loop_controls())
         layout.addWidget(self._build_speed_control())
+
+        self._tempo_bar.tempo_changed.connect(self._on_tempo_changed)
+        self._bpm_worker = BpmDetectWorker(self._engine, parent=self)
+        self._bpm_worker.detected.connect(self._on_bpm_detected)
+        self._bpm_worker.start()
 
         self._timer = QTimer(self)
         self._timer.setInterval(50)
@@ -467,12 +473,12 @@ class PlayerWindow(QDialog):
         col = QVBoxLayout(w)
         col.setContentsMargins(0, 0, 0, 0)
         col.setSpacing(2)
-        self._time_label = QLabel("0:00 / 0:00")
+        self._tempo_bar = TempoInfoBar()
         self._scrubber = ScrubberWidget()
         self._scrubber.seek_requested.connect(self._engine.seek)
         self._scrubber.loop_start_changed.connect(self._engine.set_loop_start)
         self._scrubber.loop_end_changed.connect(self._engine.set_loop_end)
-        col.addWidget(self._time_label)
+        col.addWidget(self._tempo_bar)
         col.addWidget(self._scrubber)
         return w
 
@@ -603,12 +609,24 @@ class PlayerWindow(QDialog):
         self._scrubber.set_position(pos)
         dur = self._engine.duration
         elapsed = pos * dur
-        self._time_label.setText(f"{_fmt(elapsed)} / {_fmt(dur)}")
+        self._tempo_bar.update_time(elapsed, dur)
         self._play_btn.setText('⏸ Pause' if self._engine.is_playing else '▶ Play')
         if self._loop_btn.isChecked() and dur > 0:
             a_sec, b_sec = self._engine.loop_bounds_seconds()
             self._scrubber.set_loop_start(a_sec / dur)
             self._scrubber.set_loop_end(b_sec / dur)
+
+    def _on_bpm_detected(self, bpm: float) -> None:
+        self._tempo_bar.set_bpm(bpm)
+        self._scrubber.set_tempo(
+            bpm,
+            self._tempo_bar._numerator,
+            self._tempo_bar._denominator,
+            self._engine.duration,
+        )
+
+    def _on_tempo_changed(self, bpm: float, numerator: int, denominator: int) -> None:
+        self._scrubber.set_tempo(bpm, numerator, denominator, self._engine.duration)
 
     def closeEvent(self, event):
         self._timer.stop()
