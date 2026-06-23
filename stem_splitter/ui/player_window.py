@@ -307,6 +307,7 @@ class TempoInfoBar(QWidget):
         edit.selectAll()
 
         def commit():
+            edit.editingFinished.disconnect(commit)  # guard: editingFinished can fire twice on Enter
             try:
                 val = float(edit.text())
                 if 40.0 <= val <= 250.0:
@@ -328,6 +329,7 @@ class TempoInfoBar(QWidget):
         edit.selectAll()
 
         def commit():
+            edit.editingFinished.disconnect(commit)  # guard: editingFinished can fire twice on Enter
             try:
                 val = int(edit.text())
                 if 1 <= val <= 16:
@@ -349,6 +351,7 @@ class TempoInfoBar(QWidget):
         edit.selectAll()
 
         def commit():
+            edit.editingFinished.disconnect(commit)  # guard: editingFinished can fire twice on Enter
             try:
                 val = int(edit.text())
                 if val in _VALID_DENOMINATORS:
