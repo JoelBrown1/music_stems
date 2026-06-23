@@ -25,6 +25,10 @@ class ScrubberWidget(QWidget):
         self._loop_end: float = 1.0
         self._loop_enabled: bool = False
         self._drag: int = _DRAG_NONE
+        self._bpm: float = 0.0
+        self._ts_numerator: int = 4
+        self._ts_denominator: int = 4
+        self._duration: float = 0.0
 
     def set_position(self, fraction: float) -> None:
         self._position = fraction
@@ -40,6 +44,13 @@ class ScrubberWidget(QWidget):
 
     def set_loop_enabled(self, enabled: bool) -> None:
         self._loop_enabled = enabled
+        self.update()
+
+    def set_tempo(self, bpm: float, numerator: int, denominator: int, duration: float) -> None:
+        self._bpm = bpm
+        self._ts_numerator = numerator
+        self._ts_denominator = denominator
+        self._duration = duration
         self.update()
 
     def paintEvent(self, event):
@@ -81,6 +92,31 @@ class ScrubberWidget(QWidget):
             painter.drawLine(bx, mid_y - 10, bx, mid_y + 10)
             painter.setPen(QColor('#f39c12'))
             painter.drawText(bx + 3, mid_y - 8, 'B')
+
+        # Measure lines and beat dots
+        if self._bpm > 0 and self._duration > 0:
+            bar_y = mid_y - track_h // 2
+            bar_h = track_h
+            # Beat dots (non-measure boundaries)
+            painter.setPen(Qt.PenStyle.NoPen)
+            dot_color = QColor('#444444')
+            painter.setBrush(dot_color)
+            for frac in _beat_fractions(self._bpm, self._ts_numerator, self._duration):
+                bx2 = int(frac * w)
+                painter.drawEllipse(bx2 - 1, mid_y - 1, 3, 3)
+            # Measure boundary lines and numbers
+            small_font = painter.font()
+            small_font.setPointSize(7)
+            painter.setFont(small_font)
+            for frac, measure_num in _measure_fractions(self._bpm, self._ts_numerator, self._duration):
+                mx = int(frac * w)
+                line_color = QColor('#7c83f5')
+                line_color.setAlpha(0xb0 if measure_num == 1 else 0x60)
+                painter.setPen(QPen(line_color, 1))
+                painter.drawLine(mx, bar_y, mx, bar_y + bar_h)
+                text_color = QColor('#7c83f5') if measure_num == 1 else QColor('#666666')
+                painter.setPen(text_color)
+                painter.drawText(mx + 2, bar_y - 2, str(measure_num))
 
         # White playhead
         px = int(self._position * w)
@@ -137,6 +173,35 @@ def _fmt(seconds: float) -> str:
     m = int(seconds // 60)
     s = int(seconds % 60)
     return f"{m}:{s:02d}"
+
+
+def _measure_fractions(bpm: float, numerator: int, duration: float) -> list[tuple[float, int]]:
+    if bpm <= 0 or duration <= 0:
+        return []
+    seconds_per_measure = (60.0 / bpm) * numerator
+    result: list[tuple[float, int]] = []
+    t = 0.0
+    m = 1
+    while t <= duration + 1e-9:
+        result.append((t / duration, m))
+        t += seconds_per_measure
+        m += 1
+    return result
+
+
+def _beat_fractions(bpm: float, numerator: int, duration: float) -> list[float]:
+    if bpm <= 0 or duration <= 0:
+        return []
+    seconds_per_beat = 60.0 / bpm
+    result: list[float] = []
+    beat_index = 1
+    t = seconds_per_beat
+    while t < duration - 1e-9:
+        if beat_index % numerator != 0:
+            result.append(t / duration)
+        t += seconds_per_beat
+        beat_index += 1
+    return result
 
 
 class StretchWorker(QThread):
