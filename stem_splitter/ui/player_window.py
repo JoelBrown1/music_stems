@@ -160,7 +160,7 @@ class ScrubberWidget(QWidget):
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QSlider, QGroupBox,
+    QPushButton, QSlider, QGroupBox, QLineEdit,
 )
 from PyQt6.QtCore import QThread, QTimer, pyqtSignal
 from pathlib import Path
@@ -252,6 +252,114 @@ class BpmDetectWorker(QThread):
             self.detected.emit(float(round(bpm)))
         except Exception:
             self.detected.emit(0.0)
+
+
+_VALID_DENOMINATORS = {1, 2, 4, 8, 16}
+
+
+class TempoInfoBar(QWidget):
+    tempo_changed = pyqtSignal(float, int, int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._bpm: float = 0.0
+        self._numerator: int = 4
+        self._denominator: int = 4
+
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+
+        self._bpm_label = QLabel('… BPM')
+        self._bpm_label.setStyleSheet('color: #7c83f5; font-weight: bold;')
+        self._bpm_label.mouseDoubleClickEvent = self._edit_bpm
+        row.addWidget(self._bpm_label)
+
+        self._num_label = QLabel('4')
+        self._num_label.mouseDoubleClickEvent = self._edit_numerator
+        row.addWidget(self._num_label)
+
+        row.addWidget(QLabel('/'))
+
+        self._den_label = QLabel('4')
+        self._den_label.mouseDoubleClickEvent = self._edit_denominator
+        row.addWidget(self._den_label)
+
+        row.addStretch()
+
+        self._time_label = QLabel('0:00 / 0:00')
+        self._time_label.setStyleSheet('color: #555;')
+        row.addWidget(self._time_label)
+
+    def set_bpm(self, bpm: float) -> None:
+        self._bpm = bpm
+        self._bpm_label.setText('? BPM' if bpm == 0.0 else f'{int(bpm)} BPM')
+
+    def update_time(self, elapsed: float, duration: float) -> None:
+        self._time_label.setText(f'{_fmt(elapsed)} / {_fmt(duration)}')
+
+    def _edit_bpm(self, event) -> None:
+        edit = QLineEdit(str(int(self._bpm)) if self._bpm > 0 else '', self)
+        edit.setFixedWidth(60)
+        edit.move(self._bpm_label.pos())
+        edit.show()
+        edit.setFocus()
+        edit.selectAll()
+
+        def commit():
+            try:
+                val = float(edit.text())
+                if 40.0 <= val <= 250.0:
+                    self._bpm = val
+                    self._bpm_label.setText(f'{int(val)} BPM')
+                    self.tempo_changed.emit(self._bpm, self._numerator, self._denominator)
+            except ValueError:
+                pass
+            edit.deleteLater()
+
+        edit.editingFinished.connect(commit)
+
+    def _edit_numerator(self, event) -> None:
+        edit = QLineEdit(str(self._numerator), self)
+        edit.setFixedWidth(30)
+        edit.move(self._num_label.pos())
+        edit.show()
+        edit.setFocus()
+        edit.selectAll()
+
+        def commit():
+            try:
+                val = int(edit.text())
+                if 1 <= val <= 16:
+                    self._numerator = val
+                    self._num_label.setText(str(val))
+                    self.tempo_changed.emit(self._bpm, self._numerator, self._denominator)
+            except ValueError:
+                pass
+            edit.deleteLater()
+
+        edit.editingFinished.connect(commit)
+
+    def _edit_denominator(self, event) -> None:
+        edit = QLineEdit(str(self._denominator), self)
+        edit.setFixedWidth(30)
+        edit.move(self._den_label.pos())
+        edit.show()
+        edit.setFocus()
+        edit.selectAll()
+
+        def commit():
+            try:
+                val = int(edit.text())
+                if val in _VALID_DENOMINATORS:
+                    self._denominator = val
+                    self._den_label.setText(str(val))
+                    self.tempo_changed.emit(self._bpm, self._numerator, self._denominator)
+            except ValueError:
+                pass
+            edit.deleteLater()
+
+        edit.editingFinished.connect(commit)
 
 
 class PlayerWindow(QDialog):
