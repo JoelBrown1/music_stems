@@ -228,6 +228,7 @@ class BpmDetectWorker(QThread):
         try:
             import librosa
             import numpy as np
+            # Safe to read without lock: detection runs at load, before any stretch modifies _arrays
             arrays = self._engine._arrays
             available = self._engine._available
             sr = self._engine._sample_rate
@@ -235,10 +236,12 @@ class BpmDetectWorker(QThread):
                 self.detected.emit(0.0)
                 return
             # Build mono mix: average left+right channels across all stems
-            stems = [
-                (arrays[s][:, 0] + arrays[s][:, 1]) * 0.5
-                for s in available if s in arrays
-            ]
+            stems = []
+            for s in available:
+                if s not in arrays:
+                    continue
+                a = arrays[s]
+                stems.append(a[:, 0] if a.shape[1] == 1 else (a[:, 0] + a[:, 1]) * 0.5)
             max_len = max(a.shape[0] for a in stems)
             mix = np.zeros(max_len, dtype='float32')
             for stem_mono in stems:
@@ -629,6 +632,9 @@ class PlayerWindow(QDialog):
         self._scrubber.set_tempo(bpm, numerator, denominator, self._engine.duration)
 
     def closeEvent(self, event):
+        if self._bpm_worker is not None and self._bpm_worker.isRunning():
+            self._bpm_worker.quit()
+            self._bpm_worker.wait(2000)  # wait up to 2s; librosa won't stop mid-run but guards the signal
         self._timer.stop()
         self._engine.stop()
         super().closeEvent(event)
