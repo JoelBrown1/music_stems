@@ -217,6 +217,43 @@ class StretchWorker(QThread):
         self.finished.emit()
 
 
+class BpmDetectWorker(QThread):
+    detected = pyqtSignal(float)
+
+    def __init__(self, engine: PlayerEngine, parent=None):
+        super().__init__(parent)
+        self._engine = engine
+
+    def run(self) -> None:
+        try:
+            import librosa
+            import numpy as np
+            arrays = self._engine._arrays
+            available = self._engine._available
+            sr = self._engine._sample_rate
+            if not available or not arrays:
+                self.detected.emit(0.0)
+                return
+            # Build mono mix: average left+right channels across all stems
+            stems = [
+                (arrays[s][:, 0] + arrays[s][:, 1]) * 0.5
+                for s in available if s in arrays
+            ]
+            max_len = max(a.shape[0] for a in stems)
+            mix = np.zeros(max_len, dtype='float32')
+            for stem_mono in stems:
+                mix[:stem_mono.shape[0]] += stem_mono
+            mix /= len(stems)
+            tempo, _ = librosa.beat.beat_track(y=mix, sr=sr)
+            bpm = float(np.atleast_1d(tempo)[0])
+            if not (40.0 <= bpm <= 250.0):
+                self.detected.emit(0.0)
+                return
+            self.detected.emit(float(round(bpm)))
+        except Exception:
+            self.detected.emit(0.0)
+
+
 class PlayerWindow(QDialog):
     def __init__(self, output_dir: Path, parent=None):
         super().__init__(parent)
