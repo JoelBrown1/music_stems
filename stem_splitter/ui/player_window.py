@@ -237,8 +237,11 @@ def _clamp_window(start: float, end: float) -> tuple[float, float]:
 def _zoom_centered(
     view_start: float, view_end: float, factor: float, center: float
 ) -> tuple[float, float]:
-    """Scale the view window span by factor, keeping center fixed. Returns clamped (start, end)."""
+    """Scale the view window span by factor, keeping center fixed.
+    Enforces _MIN_SPAN minimum and [0, 1] bounds. Returns clamped (start, end)."""
     span = view_end - view_start
+    if span <= 0:
+        span = _MIN_SPAN
     new_span = max(_MIN_SPAN, min(1.0, span * factor))
     ratio = new_span / span
     new_start = center - (center - view_start) * ratio

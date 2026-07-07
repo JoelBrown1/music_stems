@@ -170,6 +170,13 @@ def test_zoom_centered_stays_within_bounds():
     assert e <= 1.0
 
 
+def test_zoom_centered_handles_zero_span():
+    s, e = _zoom_centered(0.5, 0.5, 0.5, 0.5)
+    assert (e - s) >= _MIN_SPAN
+    assert s >= 0.0
+    assert e <= 1.0
+
+
 # --- _clamp_window ---
 
 def test_clamp_window_no_change():
