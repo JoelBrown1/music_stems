@@ -1,5 +1,10 @@
 # tests/test_player_window.py
-from stem_splitter.ui.player_window import _measure_fractions, _beat_fractions
+import pytest
+from stem_splitter.ui.player_window import (
+    _measure_fractions, _beat_fractions,
+    _to_screen, _to_fraction, _zoom_centered, _clamp_window,
+    _nearest_beat_fraction, _should_snap, _MIN_SPAN,
+)
 
 
 # --- _measure_fractions ---
@@ -85,3 +90,131 @@ def test_beat_fractions_3_4_time():
     # Non-boundary: 11 total - 3 = 8
     result = _beat_fractions(120.0, 3, 6.0)
     assert len(result) == 8
+
+
+# --- _to_screen ---
+
+def test_to_screen_maps_zero():
+    assert _to_screen(0.0, 0.0, 1.0, 800) == 0
+
+
+def test_to_screen_maps_one():
+    assert _to_screen(1.0, 0.0, 1.0, 800) == 800
+
+
+def test_to_screen_maps_midpoint():
+    assert _to_screen(0.5, 0.0, 1.0, 800) == 400
+
+
+def test_to_screen_zoomed_left_edge():
+    # view [0.25, 0.75]: fraction 0.25 → x=0
+    assert _to_screen(0.25, 0.25, 0.75, 800) == 0
+
+
+def test_to_screen_zoomed_right_edge():
+    # view [0.25, 0.75]: fraction 0.75 → x=800
+    assert _to_screen(0.75, 0.25, 0.75, 800) == 800
+
+
+def test_to_screen_zoomed_midpoint():
+    # view [0.25, 0.75]: fraction 0.5 → x=400
+    assert _to_screen(0.5, 0.25, 0.75, 800) == 400
+
+
+# --- _to_fraction ---
+
+def test_to_fraction_maps_zero():
+    assert _to_fraction(0.0, 0.0, 1.0, 800) == pytest.approx(0.0)
+
+
+def test_to_fraction_maps_full_width():
+    assert _to_fraction(800.0, 0.0, 1.0, 800) == pytest.approx(1.0)
+
+
+def test_to_fraction_zoomed_left_edge():
+    # view [0.25, 0.75]: x=0 → fraction 0.25
+    assert _to_fraction(0.0, 0.25, 0.75, 800) == pytest.approx(0.25)
+
+
+def test_to_fraction_zoomed_right_edge():
+    # view [0.25, 0.75]: x=800 → fraction 0.75
+    assert _to_fraction(800.0, 0.25, 0.75, 800) == pytest.approx(0.75)
+
+
+# --- _zoom_centered ---
+
+def test_zoom_centered_2x_around_center():
+    # factor=0.5 (zoom in 2×) around 0.5 from full view
+    s, e = _zoom_centered(0.0, 1.0, 0.5, 0.5)
+    assert s == pytest.approx(0.25)
+    assert e == pytest.approx(0.75)
+
+
+def test_zoom_centered_zoom_out_to_full():
+    # factor=2.0 (zoom out) from half-view centered at 0.5
+    s, e = _zoom_centered(0.25, 0.75, 2.0, 0.5)
+    assert s == pytest.approx(0.0)
+    assert e == pytest.approx(1.0)
+
+
+def test_zoom_centered_clamps_minimum_span():
+    # Extreme zoom in must not produce span below _MIN_SPAN
+    s, e = _zoom_centered(0.499, 0.501, 0.001, 0.5)
+    assert (e - s) == pytest.approx(_MIN_SPAN)
+
+
+def test_zoom_centered_stays_within_bounds():
+    # Zooming near the left edge must not go negative
+    s, e = _zoom_centered(0.0, 0.1, 0.5, 0.0)
+    assert s >= 0.0
+    assert e <= 1.0
+
+
+# --- _clamp_window ---
+
+def test_clamp_window_no_change():
+    s, e = _clamp_window(0.2, 0.8)
+    assert s == pytest.approx(0.2)
+    assert e == pytest.approx(0.8)
+
+
+def test_clamp_window_left_overflow():
+    s, e = _clamp_window(-0.1, 0.4)
+    assert s == pytest.approx(0.0)
+    assert e == pytest.approx(0.5)
+
+
+def test_clamp_window_right_overflow():
+    s, e = _clamp_window(0.7, 1.1)
+    assert e == pytest.approx(1.0)
+    assert s == pytest.approx(0.6)
+
+
+# --- _nearest_beat_fraction ---
+
+def test_nearest_beat_fraction_on_beat():
+    # 120 bpm, 60s song: beat at 0.5s = fraction 0.5/60
+    beat_frac = 0.5 / 60.0
+    assert _nearest_beat_fraction(beat_frac, 120.0, 60.0) == pytest.approx(beat_frac, abs=1e-6)
+
+
+def test_nearest_beat_fraction_snaps_to_nearest():
+    # 120 bpm, 60s song: beat at 1.0s = fraction 1/60; slightly off
+    result = _nearest_beat_fraction(1.02 / 60.0, 120.0, 60.0)
+    assert result == pytest.approx(1.0 / 60.0, abs=1e-4)
+
+
+def test_nearest_beat_fraction_zero_bpm_returns_unchanged():
+    assert _nearest_beat_fraction(0.5, 0.0, 60.0) == pytest.approx(0.5)
+
+
+# --- _should_snap ---
+
+def test_should_snap_within_threshold():
+    # fraction and nearest 5px apart at 800px width → snap
+    assert _should_snap(0.0, 5.0 / 800.0, 0.0, 1.0, 800) is True
+
+
+def test_should_snap_outside_threshold():
+    # fraction and nearest 15px apart → no snap
+    assert _should_snap(0.0, 15.0 / 800.0, 0.0, 1.0, 800) is False

@@ -204,6 +204,71 @@ def _beat_fractions(bpm: float, numerator: int, duration: float) -> list[float]:
     return result
 
 
+_MIN_SPAN: float = 1.0 / 64.0  # minimum view window (fraction of total song)
+_AUTO_PAN_MARGIN: float = 0.05  # fraction of view span that triggers auto-pan
+
+
+def _to_screen(fraction: float, view_start: float, view_end: float, width: int) -> int:
+    """Map a song fraction to a screen x-coordinate within the current view window."""
+    span = view_end - view_start
+    if span <= 0:
+        return 0
+    return int((fraction - view_start) / span * width)
+
+
+def _to_fraction(x: float, view_start: float, view_end: float, width: int) -> float:
+    """Map a screen x-coordinate to a song fraction within the current view window."""
+    if width <= 0:
+        return view_start
+    span = view_end - view_start
+    return view_start + (x / width) * span
+
+
+def _clamp_window(start: float, end: float) -> tuple[float, float]:
+    """Clamp a view window to [0, 1], preserving span and enforcing _MIN_SPAN."""
+    span = max(_MIN_SPAN, min(1.0, end - start))
+    if start < 0.0:
+        return 0.0, span
+    if start + span > 1.0:
+        return max(0.0, 1.0 - span), 1.0
+    return start, start + span
+
+
+def _zoom_centered(
+    view_start: float, view_end: float, factor: float, center: float
+) -> tuple[float, float]:
+    """Scale the view window span by factor, keeping center fixed. Returns clamped (start, end)."""
+    span = view_end - view_start
+    new_span = max(_MIN_SPAN, min(1.0, span * factor))
+    ratio = new_span / span
+    new_start = center - (center - view_start) * ratio
+    return _clamp_window(new_start, new_start + new_span)
+
+
+def _nearest_beat_fraction(fraction: float, bpm: float, duration: float) -> float:
+    """Return the nearest beat boundary as a song fraction. Returns fraction unchanged if bpm/duration ≤ 0."""
+    if bpm <= 0 or duration <= 0:
+        return fraction
+    spb = 60.0 / bpm
+    t = fraction * duration
+    nearest_t = round(t / spb) * spb
+    return max(0.0, min(1.0, nearest_t / duration))
+
+
+def _should_snap(
+    fraction: float,
+    nearest: float,
+    view_start: float,
+    view_end: float,
+    width: int,
+    threshold_px: int = 10,
+) -> bool:
+    """True if nearest beat is within threshold_px of fraction in screen coordinates."""
+    sx = _to_screen(fraction, view_start, view_end, width)
+    nx = _to_screen(nearest, view_start, view_end, width)
+    return abs(sx - nx) <= threshold_px
+
+
 class StretchWorker(QThread):
     finished = pyqtSignal()
 
