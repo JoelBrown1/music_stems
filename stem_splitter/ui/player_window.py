@@ -9,6 +9,7 @@ _DRAG_NONE = 0
 _DRAG_PLAYHEAD = 1
 _DRAG_LOOP_A = 2
 _DRAG_LOOP_B = 3
+_DRAG_PAN = 4
 _HIT_RADIUS = 8
 
 
@@ -399,6 +400,249 @@ class OverviewStrip(QWidget):
 
     def mouseReleaseEvent(self, event):
         self._dragging_box = False
+
+
+class DetailTimeline(QWidget):
+    """Zoomable detail timeline for precise loop A/B editing.
+
+    View window [_view_start, _view_end] maps song fractions to screen pixels.
+    All painting and hit-testing go through _screen()/_fraction() helpers.
+    Playhead auto-follows when playing. Dragged A/B markers auto-pan at the edges.
+    Holding ⌘ (Command) while dragging A/B snaps to the nearest beat.
+    """
+
+    seek_requested = pyqtSignal(float)
+    loop_start_changed = pyqtSignal(float)
+    loop_end_changed = pyqtSignal(float)
+    zoom_changed = pyqtSignal(float, float)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(64)
+        self._position: float = 0.0
+        self._loop_start: float = 0.0
+        self._loop_end: float = 1.0
+        self._loop_enabled: bool = False
+        self._bpm: float = 0.0
+        self._ts_numerator: int = 4
+        self._ts_denominator: int = 4
+        self._duration: float = 0.0
+        self._view_start: float = 0.0
+        self._view_end: float = 1.0
+        self._drag: int = _DRAG_NONE
+        self._pan_anchor_frac: float = 0.0
+        self._snapping: bool = False
+
+    # ------------------------------------------------------------------ public
+
+    def set_position(self, fraction: float) -> None:
+        self._position = fraction
+        if not (self._view_start <= fraction <= self._view_end):
+            span = self._view_end - self._view_start
+            new_start, new_end = _clamp_window(fraction - span / 2, fraction + span / 2)
+            self._view_start = new_start
+            self._view_end = new_end
+            self.zoom_changed.emit(new_start, new_end)
+        self.update()
+
+    def set_loop_start(self, fraction: float) -> None:
+        self._loop_start = fraction
+        self.update()
+
+    def set_loop_end(self, fraction: float) -> None:
+        self._loop_end = fraction
+        self.update()
+
+    def set_loop_enabled(self, enabled: bool) -> None:
+        self._loop_enabled = enabled
+        self.update()
+
+    def set_tempo(self, bpm: float, numerator: int, denominator: int, duration: float) -> None:
+        self._bpm = bpm
+        self._ts_numerator = numerator
+        self._ts_denominator = denominator
+        self._duration = duration
+        self.update()
+
+    def set_view_window(self, start: float, end: float) -> None:
+        self._view_start = start
+        self._view_end = end
+        self.update()
+
+    # ----------------------------------------------------------------- helpers
+
+    def _screen(self, fraction: float) -> int:
+        return _to_screen(fraction, self._view_start, self._view_end, self.width())
+
+    def _fraction(self, x: float) -> float:
+        return _to_fraction(x, self._view_start, self._view_end, self.width())
+
+    def _apply_auto_pan(self, fraction: float) -> None:
+        span = self._view_end - self._view_start
+        margin = span * _AUTO_PAN_MARGIN
+        shift = 0.0
+        if fraction < self._view_start + margin:
+            shift = fraction - (self._view_start + margin)
+        elif fraction > self._view_end - margin:
+            shift = fraction - (self._view_end - margin)
+        if shift != 0.0:
+            new_start, new_end = _clamp_window(
+                self._view_start + shift, self._view_end + shift
+            )
+            self._view_start = new_start
+            self._view_end = new_end
+            self.zoom_changed.emit(new_start, new_end)
+
+    def _resolve_snap(self, fraction: float) -> float:
+        from PyQt6.QtWidgets import QApplication
+        mods = QApplication.keyboardModifiers()
+        if Qt.KeyboardModifier.ControlModifier in mods:
+            nearest = _nearest_beat_fraction(fraction, self._bpm, self._duration)
+            if _should_snap(fraction, nearest, self._view_start, self._view_end, self.width()):
+                self._snapping = True
+                return nearest
+        self._snapping = False
+        return fraction
+
+    # ----------------------------------------------------------------- painting
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        mid_y = h // 2
+        track_h = 6
+
+        # Grey track
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor('#333333'))
+        painter.drawRoundedRect(0, mid_y - track_h // 2, w, track_h, 2, 2)
+
+        # Played region (only the portion visible in the current view window)
+        if self._position <= self._view_start:
+            played_to = 0
+        elif self._position >= self._view_end:
+            played_to = w
+        else:
+            played_to = self._screen(self._position)
+        played_to = max(0, min(w, played_to))
+        painter.setBrush(QColor('#7c83f5'))
+        painter.drawRoundedRect(0, mid_y - track_h // 2, played_to, track_h, 2, 2)
+
+        # Loop region and A/B markers
+        if self._loop_enabled:
+            lx = self._screen(self._loop_start)
+            bx = self._screen(self._loop_end)
+            lc = QColor('#f39c12')
+            lc.setAlpha(80)
+            painter.setBrush(lc)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRect(lx, mid_y - track_h // 2, bx - lx, track_h)
+
+            a_color = QColor('#ffffff') if (self._snapping and self._drag == _DRAG_LOOP_A) else QColor('#f39c12')
+            b_color = QColor('#ffffff') if (self._snapping and self._drag == _DRAG_LOOP_B) else QColor('#f39c12')
+
+            painter.setPen(QPen(a_color, 2))
+            painter.drawLine(lx, mid_y - 12, lx, mid_y + 12)
+            painter.setPen(a_color)
+            painter.drawText(lx + 3, mid_y - 10, 'A')
+
+            painter.setPen(QPen(b_color, 2))
+            painter.drawLine(bx, mid_y - 12, bx, mid_y + 12)
+            painter.setPen(b_color)
+            painter.drawText(bx + 3, mid_y - 10, 'B')
+
+        # Beat dots and measure lines (skip anything outside the visible range)
+        if self._bpm > 0 and self._duration > 0:
+            bar_y = mid_y - track_h // 2
+
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor('#444444'))
+            for frac in _beat_fractions(self._bpm, self._ts_numerator, self._duration):
+                bx2 = self._screen(frac)
+                if 0 <= bx2 <= w:
+                    painter.drawEllipse(bx2 - 1, mid_y - 1, 3, 3)
+
+            small_font = painter.font()
+            small_font.setPointSize(7)
+            painter.setFont(small_font)
+            for frac, num in _measure_fractions(self._bpm, self._ts_numerator, self._duration):
+                mx = self._screen(frac)
+                if -2 <= mx <= w + 2:
+                    lc2 = QColor('#7c83f5')
+                    lc2.setAlpha(0xb0 if num == 1 else 0x60)
+                    painter.setPen(QPen(lc2, 1))
+                    painter.drawLine(mx, bar_y, mx, bar_y + track_h)
+                    tc = QColor('#7c83f5') if num == 1 else QColor('#666666')
+                    painter.setPen(tc)
+                    painter.drawText(mx + 2, bar_y - 2, str(num))
+
+        # Playhead (always on top)
+        px = self._screen(self._position)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor('#ffffff'))
+        painter.drawEllipse(px - 6, mid_y - 6, 12, 12)
+
+    # -------------------------------------------------------------- mouse / wheel
+
+    def mousePressEvent(self, event):
+        x = event.position().x()
+        fraction = max(0.0, min(1.0, self._fraction(x)))
+        px = self._screen(self._position)
+        ax = self._screen(self._loop_start)
+        bx = self._screen(self._loop_end)
+
+        if self._loop_enabled and abs(x - ax) < _HIT_RADIUS:
+            self._drag = _DRAG_LOOP_A
+        elif self._loop_enabled and abs(x - bx) < _HIT_RADIUS:
+            self._drag = _DRAG_LOOP_B
+        elif abs(x - px) < _HIT_RADIUS:
+            self._drag = _DRAG_PLAYHEAD
+            self.seek_requested.emit(fraction)
+        else:
+            self._drag = _DRAG_PAN
+            self._pan_anchor_frac = self._fraction(x)
+
+    def mouseMoveEvent(self, event):
+        x = event.position().x()
+        fraction = max(0.0, min(1.0, self._fraction(x)))
+        if self._drag == _DRAG_PLAYHEAD:
+            self.seek_requested.emit(fraction)
+        elif self._drag == _DRAG_LOOP_A:
+            fraction = self._resolve_snap(fraction)
+            self._apply_auto_pan(fraction)
+            self.loop_start_changed.emit(fraction)
+        elif self._drag == _DRAG_LOOP_B:
+            fraction = self._resolve_snap(fraction)
+            self._apply_auto_pan(fraction)
+            self.loop_end_changed.emit(fraction)
+        elif self._drag == _DRAG_PAN:
+            delta = self._pan_anchor_frac - self._fraction(x)
+            new_start, new_end = _clamp_window(
+                self._view_start + delta, self._view_end + delta
+            )
+            self._view_start = new_start
+            self._view_end = new_end
+            self.zoom_changed.emit(new_start, new_end)
+            self._pan_anchor_frac = self._fraction(x)
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        self._drag = _DRAG_NONE
+        self._snapping = False
+        self.update()
+
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()
+        factor = 0.8 if delta > 0 else 1.25
+        center = self._fraction(event.position().x())
+        new_start, new_end = _zoom_centered(
+            self._view_start, self._view_end, factor, center
+        )
+        self._view_start = new_start
+        self._view_end = new_end
+        self.zoom_changed.emit(new_start, new_end)
+        self.update()
 
 
 class StretchWorker(QThread):
