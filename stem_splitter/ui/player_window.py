@@ -272,6 +272,135 @@ def _should_snap(
     return abs(sx - nx) <= threshold_px
 
 
+class OverviewStrip(QWidget):
+    """Always-full-song overview strip. Shows position, loop region, measure lines,
+    and a shaded box indicating the current detail view window."""
+
+    seek_requested = pyqtSignal(float)
+    view_pan_requested = pyqtSignal(float)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(24)
+        self._position: float = 0.0
+        self._loop_start: float = 0.0
+        self._loop_end: float = 1.0
+        self._loop_enabled: bool = False
+        self._bpm: float = 0.0
+        self._ts_numerator: int = 4
+        self._duration: float = 0.0
+        self._view_start: float = 0.0
+        self._view_end: float = 1.0
+        self._dragging_box: bool = False
+        self._drag_box_offset: float = 0.0
+
+    def set_position(self, fraction: float) -> None:
+        self._position = fraction
+        self.update()
+
+    def set_loop_start(self, fraction: float) -> None:
+        self._loop_start = fraction
+        self.update()
+
+    def set_loop_end(self, fraction: float) -> None:
+        self._loop_end = fraction
+        self.update()
+
+    def set_loop_enabled(self, enabled: bool) -> None:
+        self._loop_enabled = enabled
+        self.update()
+
+    def set_tempo(self, bpm: float, numerator: int, denominator: int, duration: float) -> None:
+        self._bpm = bpm
+        self._ts_numerator = numerator
+        self._duration = duration
+        self.update()
+
+    def set_view_window(self, start: float, end: float) -> None:
+        self._view_start = start
+        self._view_end = end
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        mid_y = h // 2
+        bar_h = 3
+
+        # Grey track
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor('#333333'))
+        painter.drawRect(0, mid_y - bar_h // 2, w, bar_h)
+
+        # Played region
+        played_x = int(self._position * w)
+        painter.setBrush(QColor('#7c83f5'))
+        painter.drawRect(0, mid_y - bar_h // 2, played_x, bar_h)
+
+        # Loop region and markers
+        if self._loop_enabled:
+            lx = int(self._loop_start * w)
+            bx = int(self._loop_end * w)
+            lc = QColor('#f39c12')
+            lc.setAlpha(80)
+            painter.setBrush(lc)
+            painter.drawRect(lx, mid_y - bar_h // 2, bx - lx, bar_h)
+            painter.setPen(QPen(QColor('#f39c12'), 1))
+            painter.drawLine(lx, 0, lx, h)
+            painter.drawLine(bx, 0, bx, h)
+
+        # Measure lines (no numbers — too small)
+        if self._bpm > 0 and self._duration > 0:
+            mc = QColor('#7c83f5')
+            mc.setAlpha(60)
+            painter.setPen(QPen(mc, 1))
+            for frac, _ in _measure_fractions(self._bpm, self._ts_numerator, self._duration):
+                mx = int(frac * w)
+                painter.drawLine(mx, mid_y - bar_h // 2, mx, mid_y + bar_h // 2)
+
+        # Playhead
+        px = int(self._position * w)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor('#ffffff'))
+        painter.drawEllipse(px - 3, mid_y - 3, 6, 6)
+
+        # View window box
+        vx = int(self._view_start * w)
+        vw = int((self._view_end - self._view_start) * w)
+        vc = QColor('#ffffff')
+        vc.setAlpha(25)
+        painter.setBrush(vc)
+        painter.setPen(QPen(QColor(255, 255, 255, 80), 1))
+        painter.drawRect(vx, 0, vw, h - 1)
+
+    def mousePressEvent(self, event):
+        x = event.position().x()
+        w = self.width()
+        fraction = max(0.0, min(1.0, x / w))
+        vx = int(self._view_start * w)
+        vw = int((self._view_end - self._view_start) * w)
+        if vw > 0 and vx <= x <= vx + vw:
+            self._dragging_box = True
+            center = (self._view_start + self._view_end) / 2
+            self._drag_box_offset = fraction - center
+        else:
+            self._dragging_box = False
+            self.seek_requested.emit(fraction)
+            self.view_pan_requested.emit(fraction)
+
+    def mouseMoveEvent(self, event):
+        x = event.position().x()
+        fraction = max(0.0, min(1.0, x / self.width()))
+        if self._dragging_box:
+            self.view_pan_requested.emit(fraction - self._drag_box_offset)
+        else:
+            self.seek_requested.emit(fraction)
+
+    def mouseReleaseEvent(self, event):
+        self._dragging_box = False
+
+
 class StretchWorker(QThread):
     finished = pyqtSignal()
 
