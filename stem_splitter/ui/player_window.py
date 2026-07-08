@@ -13,151 +13,6 @@ _DRAG_PAN = 4
 _HIT_RADIUS = 8
 
 
-class ScrubberWidget(QWidget):
-    seek_requested = pyqtSignal(float)
-    loop_start_changed = pyqtSignal(float)
-    loop_end_changed = pyqtSignal(float)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setMinimumHeight(32)
-        self._position: float = 0.0
-        self._loop_start: float = 0.0
-        self._loop_end: float = 1.0
-        self._loop_enabled: bool = False
-        self._drag: int = _DRAG_NONE
-        self._bpm: float = 0.0
-        self._ts_numerator: int = 4
-        self._ts_denominator: int = 4
-        self._duration: float = 0.0
-
-    def set_position(self, fraction: float) -> None:
-        self._position = fraction
-        self.update()
-
-    def set_loop_start(self, fraction: float) -> None:
-        self._loop_start = fraction
-        self.update()
-
-    def set_loop_end(self, fraction: float) -> None:
-        self._loop_end = fraction
-        self.update()
-
-    def set_loop_enabled(self, enabled: bool) -> None:
-        self._loop_enabled = enabled
-        self.update()
-
-    def set_tempo(self, bpm: float, numerator: int, denominator: int, duration: float) -> None:
-        self._bpm = bpm
-        self._ts_numerator = numerator
-        self._ts_denominator = denominator
-        self._duration = duration
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w, h = self.width(), self.height()
-        mid_y = h // 2
-        track_h = 4
-
-        # Grey track
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor('#333333'))
-        painter.drawRoundedRect(0, mid_y - track_h // 2, w, track_h, 2, 2)
-
-        # Blue played region
-        played_x = int(self._position * w)
-        painter.setBrush(QColor('#7c83f5'))
-        painter.drawRoundedRect(0, mid_y - track_h // 2, played_x, track_h, 2, 2)
-
-        if self._loop_enabled:
-            # Orange loop region
-            lx = int(self._loop_start * w)
-            lw = int((self._loop_end - self._loop_start) * w)
-            loop_color = QColor('#f39c12')
-            loop_color.setAlpha(80)
-            painter.setBrush(loop_color)
-            painter.drawRect(lx, mid_y - track_h // 2, lw, track_h)
-
-            # A marker
-            painter.setPen(QPen(QColor('#f39c12'), 2))
-            painter.setBrush(QColor('#f39c12'))
-            painter.drawLine(lx, mid_y - 10, lx, mid_y + 10)
-            painter.setPen(QColor('#f39c12'))
-            painter.drawText(lx + 3, mid_y - 8, 'A')
-
-            # B marker
-            bx = int(self._loop_end * w)
-            painter.setPen(QPen(QColor('#f39c12'), 2))
-            painter.drawLine(bx, mid_y - 10, bx, mid_y + 10)
-            painter.setPen(QColor('#f39c12'))
-            painter.drawText(bx + 3, mid_y - 8, 'B')
-
-        # Measure lines and beat dots
-        if self._bpm > 0 and self._duration > 0:
-            bar_y = mid_y - track_h // 2
-            bar_h = track_h
-            # Beat dots (non-measure boundaries)
-            painter.setPen(Qt.PenStyle.NoPen)
-            dot_color = QColor('#444444')
-            painter.setBrush(dot_color)
-            for frac in _beat_fractions(self._bpm, self._ts_numerator, self._duration):
-                bx2 = int(frac * w)
-                painter.drawEllipse(bx2 - 1, mid_y - 1, 3, 3)
-            # Measure boundary lines and numbers
-            small_font = painter.font()
-            small_font.setPointSize(7)
-            painter.setFont(small_font)
-            for frac, measure_num in _measure_fractions(self._bpm, self._ts_numerator, self._duration):
-                mx = int(frac * w)
-                line_color = QColor('#7c83f5')
-                line_color.setAlpha(0xb0 if measure_num == 1 else 0x60)
-                painter.setPen(QPen(line_color, 1))
-                painter.drawLine(mx, bar_y, mx, bar_y + bar_h)
-                text_color = QColor('#7c83f5') if measure_num == 1 else QColor('#666666')
-                painter.setPen(text_color)
-                painter.drawText(mx + 2, bar_y - 2, str(measure_num))
-
-        # White playhead
-        px = int(self._position * w)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor('#ffffff'))
-        painter.drawEllipse(px - 6, mid_y - 6, 12, 12)
-
-    def mousePressEvent(self, event):
-        x = event.position().x()
-        w = self.width()
-        fraction = max(0.0, min(1.0, x / w))
-
-        px = int(self._position * w)
-        ax = int(self._loop_start * w)
-        bx = int(self._loop_end * w)
-
-        if self._loop_enabled and abs(x - ax) < _HIT_RADIUS:
-            self._drag = _DRAG_LOOP_A
-        elif self._loop_enabled and abs(x - bx) < _HIT_RADIUS:
-            self._drag = _DRAG_LOOP_B
-        elif abs(x - px) < _HIT_RADIUS:
-            self._drag = _DRAG_PLAYHEAD
-            self.seek_requested.emit(fraction)
-        else:
-            self._drag = _DRAG_NONE
-            self.seek_requested.emit(fraction)
-
-    def mouseMoveEvent(self, event):
-        x = event.position().x()
-        fraction = max(0.0, min(1.0, x / self.width()))
-        if self._drag == _DRAG_PLAYHEAD:
-            self.seek_requested.emit(fraction)
-        elif self._drag == _DRAG_LOOP_A:
-            self.loop_start_changed.emit(fraction)
-        elif self._drag == _DRAG_LOOP_B:
-            self.loop_end_changed.emit(fraction)
-
-    def mouseReleaseEvent(self, event):
-        self._drag = _DRAG_NONE
-
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
@@ -1011,13 +866,37 @@ class PlayerWindow(QDialog):
         col = QVBoxLayout(w)
         col.setContentsMargins(0, 0, 0, 0)
         col.setSpacing(2)
+
         self._tempo_bar = TempoInfoBar()
-        self._scrubber = ScrubberWidget()
-        self._scrubber.seek_requested.connect(self._engine.seek)
-        self._scrubber.loop_start_changed.connect(self._engine.set_loop_start)
-        self._scrubber.loop_end_changed.connect(self._engine.set_loop_end)
+        self._overview = OverviewStrip()
+        self._detail = DetailTimeline()
+        self._zoom_bar = ZoomControlBar()
+
+        # Seek
+        self._overview.seek_requested.connect(self._engine.seek)
+        self._detail.seek_requested.connect(self._engine.seek)
+
+        # Overview pan request → shift detail view window
+        self._overview.view_pan_requested.connect(self._on_overview_pan)
+
+        # Loop editing from detail → engine + overview
+        self._detail.loop_start_changed.connect(self._engine.set_loop_start)
+        self._detail.loop_start_changed.connect(self._overview.set_loop_start)
+        self._detail.loop_end_changed.connect(self._engine.set_loop_end)
+        self._detail.loop_end_changed.connect(self._overview.set_loop_end)
+
+        # Zoom sync: detail wheel/pan → all three widgets
+        self._detail.zoom_changed.connect(self._on_view_changed)
+
+        # Zoom bar buttons/scrollbar → all three widgets
+        self._zoom_bar.zoom_changed.connect(self._on_view_changed)
+        self._zoom_bar.reset_requested.connect(self._on_zoom_reset)
+        self._zoom_bar.zoom_to_loop_requested.connect(self._on_zoom_to_loop)
+
         col.addWidget(self._tempo_bar)
-        col.addWidget(self._scrubber)
+        col.addWidget(self._overview)
+        col.addWidget(self._detail)
+        col.addWidget(self._zoom_bar)
         return w
 
     def _build_transport(self) -> QWidget:
@@ -1047,7 +926,8 @@ class PlayerWindow(QDialog):
 
     def _on_stop(self) -> None:
         self._engine.stop()
-        self._scrubber.set_position(0.0)
+        self._overview.set_position(0.0)
+        self._detail.set_position(0.0)
 
     def _build_loop_controls(self) -> QGroupBox:
         box = QGroupBox("Loop")
@@ -1073,22 +953,28 @@ class PlayerWindow(QDialog):
 
     def _on_loop_toggle(self, checked: bool) -> None:
         self._engine.set_loop_enabled(checked)
-        self._scrubber.set_loop_enabled(checked)
+        self._overview.set_loop_enabled(checked)
+        self._detail.set_loop_enabled(checked)
         self._loop_btn.setStyleSheet(
             "color: #f39c12; border: 1px solid #f39c12;" if checked else ""
         )
+        self._update_loop_zoom_button()
 
     def _on_set_a(self) -> None:
         pos = self._engine.position
         self._engine.set_loop_start(pos)
-        self._scrubber.set_loop_start(pos)
+        self._overview.set_loop_start(pos)
+        self._detail.set_loop_start(pos)
         self._update_loop_label()
+        self._update_loop_zoom_button()
 
     def _on_set_b(self) -> None:
         pos = self._engine.position
         self._engine.set_loop_end(pos)
-        self._scrubber.set_loop_end(pos)
+        self._overview.set_loop_end(pos)
+        self._detail.set_loop_end(pos)
         self._update_loop_label()
+        self._update_loop_zoom_button()
 
     def _update_loop_label(self) -> None:
         a_sec, b_sec = self._engine.loop_bounds_seconds()
@@ -1144,27 +1030,66 @@ class PlayerWindow(QDialog):
 
     def _on_tick(self) -> None:
         pos = self._engine.position
-        self._scrubber.set_position(pos)
+        self._overview.set_position(pos)
+        self._detail.set_position(pos)
         dur = self._engine.duration
-        elapsed = pos * dur
-        self._tempo_bar.update_time(elapsed, dur)
+        self._tempo_bar.update_time(pos * dur, dur)
         self._play_btn.setText('⏸ Pause' if self._engine.is_playing else '▶ Play')
         if self._loop_btn.isChecked() and dur > 0:
             a_sec, b_sec = self._engine.loop_bounds_seconds()
-            self._scrubber.set_loop_start(a_sec / dur)
-            self._scrubber.set_loop_end(b_sec / dur)
+            a_frac = a_sec / dur
+            b_frac = b_sec / dur
+            self._overview.set_loop_start(a_frac)
+            self._overview.set_loop_end(b_frac)
+            self._detail.set_loop_start(a_frac)
+            self._detail.set_loop_end(b_frac)
+
+    def _on_view_changed(self, start: float, end: float) -> None:
+        self._overview.set_view_window(start, end)
+        self._detail.set_view_window(start, end)
+        self._zoom_bar.set_view_window(start, end)
+
+    def _on_overview_pan(self, center: float) -> None:
+        span = self._detail._view_end - self._detail._view_start
+        new_start, new_end = _clamp_window(center - span / 2, center + span / 2)
+        self._on_view_changed(new_start, new_end)
+
+    def _on_zoom_reset(self) -> None:
+        self._on_view_changed(0.0, 1.0)
+
+    def _on_zoom_to_loop(self) -> None:
+        a_sec, b_sec = self._engine.loop_bounds_seconds()
+        dur = self._engine.duration
+        if dur <= 0 or a_sec >= b_sec:
+            return
+        a_frac = a_sec / dur
+        b_frac = b_sec / dur
+        margin = (b_frac - a_frac) * 0.1
+        s = max(0.0, a_frac - margin)
+        e = min(1.0, b_frac + margin)
+        min_span = min(1.0, 0.5 / dur) if dur > 0 else _MIN_SPAN
+        if e - s < min_span:
+            mid = (s + e) / 2
+            s, e = _clamp_window(mid - min_span / 2, mid + min_span / 2)
+        self._on_view_changed(s, e)
+
+    def _update_loop_zoom_button(self) -> None:
+        a_sec, b_sec = self._engine.loop_bounds_seconds()
+        can = self._loop_btn.isChecked() and b_sec > a_sec + 0.001
+        self._zoom_bar.set_loop_zoom_enabled(can)
 
     def _on_bpm_detected(self, bpm: float) -> None:
         self._tempo_bar.set_bpm(bpm)
-        self._scrubber.set_tempo(
-            bpm,
-            self._tempo_bar._numerator,
-            self._tempo_bar._denominator,
-            self._engine.duration,
-        )
+        dur = self._engine.duration
+        num = self._tempo_bar._numerator
+        den = self._tempo_bar._denominator
+        self._overview.set_tempo(bpm, num, den, dur)
+        self._detail.set_tempo(bpm, num, den, dur)
 
     def _on_tempo_changed(self, bpm: float, numerator: int, denominator: int) -> None:
-        self._scrubber.set_tempo(bpm, numerator, denominator, self._engine.duration)
+        dur = self._engine.duration
+        self._overview.set_tempo(bpm, numerator, denominator, dur)
+        self._detail.set_tempo(bpm, numerator, denominator, dur)
 
     def closeEvent(self, event):
         if self._bpm_worker is not None and self._bpm_worker.isRunning():
