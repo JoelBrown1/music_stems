@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QWidget, QApplication
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QPainter, QColor, QPen
 
@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QSlider, QGroupBox, QLineEdit, QScrollBar,
 )
-from PyQt6.QtCore import QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QThread, QTimer
 from pathlib import Path
 from stem_splitter.core.output import STEMS
 from stem_splitter.core.player import PlayerEngine
@@ -246,6 +246,8 @@ class OverviewStrip(QWidget):
             self.view_pan_requested.emit(fraction)
 
     def mouseMoveEvent(self, event):
+        if not (event.buttons() & Qt.MouseButton.LeftButton):
+            return
         x = event.position().x()
         fraction = max(0.0, min(1.0, x / self.width()))
         if self._dragging_box:
@@ -349,9 +351,8 @@ class DetailTimeline(QWidget):
             self.zoom_changed.emit(new_start, new_end)
 
     def _resolve_snap(self, fraction: float) -> float:
-        from PyQt6.QtWidgets import QApplication
         mods = QApplication.keyboardModifiers()
-        if Qt.KeyboardModifier.ControlModifier in mods:
+        if Qt.KeyboardModifier.MetaModifier in mods:
             nearest = _nearest_beat_fraction(fraction, self._bpm, self._duration)
             if _should_snap(fraction, nearest, self._view_start, self._view_end, self.width()):
                 self._snapping = True
