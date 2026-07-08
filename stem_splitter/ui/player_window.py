@@ -161,7 +161,7 @@ class ScrubberWidget(QWidget):
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QSlider, QGroupBox, QLineEdit,
+    QPushButton, QSlider, QGroupBox, QLineEdit, QScrollBar,
 )
 from PyQt6.QtCore import QThread, QTimer, pyqtSignal
 from pathlib import Path
@@ -643,6 +643,100 @@ class DetailTimeline(QWidget):
         self._view_end = new_end
         self.zoom_changed.emit(new_start, new_end)
         self.update()
+
+
+class ZoomControlBar(QWidget):
+    """Zoom −/+ buttons, zoom-to-loop button, reset button, and a pan scrollbar."""
+
+    zoom_changed = pyqtSignal(float, float)
+    reset_requested = pyqtSignal()
+    zoom_to_loop_requested = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._view_start: float = 0.0
+        self._view_end: float = 1.0
+        self._updating_scrollbar: bool = False
+
+        col = QVBoxLayout(self)
+        col.setContentsMargins(0, 2, 0, 0)
+        col.setSpacing(2)
+
+        btn_row = QWidget()
+        row = QHBoxLayout(btn_row)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+
+        minus_btn = QPushButton("−")
+        minus_btn.setFixedWidth(28)
+        minus_btn.clicked.connect(self._on_zoom_out)
+        row.addWidget(minus_btn)
+
+        plus_btn = QPushButton("+")
+        plus_btn.setFixedWidth(28)
+        plus_btn.clicked.connect(self._on_zoom_in)
+        row.addWidget(plus_btn)
+
+        self._loop_btn = QPushButton("⊡ Zoom to loop")
+        self._loop_btn.setEnabled(False)
+        self._loop_btn.clicked.connect(self.zoom_to_loop_requested)
+        row.addWidget(self._loop_btn)
+
+        reset_btn = QPushButton("↺")
+        reset_btn.setFixedWidth(28)
+        reset_btn.clicked.connect(self.reset_requested)
+        row.addWidget(reset_btn)
+        row.addStretch()
+
+        self._scrollbar = QScrollBar(Qt.Orientation.Horizontal)
+        self._scrollbar.setRange(0, 10000)
+        self._scrollbar.setVisible(False)
+        self._scrollbar.valueChanged.connect(self._on_scroll)
+
+        col.addWidget(btn_row)
+        col.addWidget(self._scrollbar)
+
+    def set_view_window(self, start: float, end: float) -> None:
+        self._view_start = start
+        self._view_end = end
+        self._update_scrollbar()
+
+    def set_loop_zoom_enabled(self, enabled: bool) -> None:
+        self._loop_btn.setEnabled(enabled)
+
+    def _update_scrollbar(self) -> None:
+        span = self._view_end - self._view_start
+        is_zoomed = span < 0.999
+        self._scrollbar.setVisible(is_zoomed)
+        if not is_zoomed:
+            return
+        self._updating_scrollbar = True
+        page = max(1, int(span * 10000))
+        self._scrollbar.setPageStep(page)
+        self._scrollbar.setMaximum(10000 - page)
+        self._scrollbar.setValue(int(self._view_start * 10000))
+        self._updating_scrollbar = False
+
+    def _on_scroll(self, value: int) -> None:
+        if self._updating_scrollbar:
+            return
+        span = self._view_end - self._view_start
+        new_start = value / 10000.0
+        new_end = new_start + span
+        if new_end > 1.0:
+            new_end = 1.0
+            new_start = max(0.0, 1.0 - span)
+        self.zoom_changed.emit(new_start, new_end)
+
+    def _on_zoom_in(self) -> None:
+        center = (self._view_start + self._view_end) / 2
+        s, e = _zoom_centered(self._view_start, self._view_end, 0.5, center)
+        self.zoom_changed.emit(s, e)
+
+    def _on_zoom_out(self) -> None:
+        center = (self._view_start + self._view_end) / 2
+        s, e = _zoom_centered(self._view_start, self._view_end, 2.0, center)
+        self.zoom_changed.emit(s, e)
 
 
 class StretchWorker(QThread):
