@@ -8,7 +8,8 @@ from PyQt6.QtCore import QCoreApplication
 def qapp():
     return QCoreApplication.instance() or QCoreApplication(sys.argv)
 
-from stem_splitter.core.worker import PipelineWorker, MidiWorker
+from stem_splitter.core.worker import PipelineWorker, MidiWorker, SearchWorker
+from stem_splitter.core.downloader import SearchResult
 from stem_splitter.core.midi_params import DEFAULTS
 
 
@@ -65,3 +66,26 @@ def test_midi_worker_emits_error_per_failed_stem_and_continues(tmp_path, qapp):
         worker.run()
     assert len(errors) == 2
     assert finished == [True]
+
+
+def test_search_worker_emits_finished_with_results(qapp):
+    fake_results = [SearchResult(
+        video_id="abc123", title="Song One", channel="Artist A",
+        duration_seconds=215, thumbnail_url="https://i.ytimg.com/vi/abc123/hq720.jpg",
+        url="https://www.youtube.com/watch?v=abc123",
+    )]
+    finished = []
+    with patch("stem_splitter.core.worker.search_youtube", return_value=fake_results):
+        worker = SearchWorker("some query")
+        worker.finished.connect(lambda r: finished.append(r))
+        worker.run()
+    assert finished == [fake_results]
+
+
+def test_search_worker_emits_error_on_failure(qapp):
+    errors = []
+    with patch("stem_splitter.core.worker.search_youtube", side_effect=RuntimeError("boom")):
+        worker = SearchWorker("some query")
+        worker.error.connect(lambda msg: errors.append(msg))
+        worker.run()
+    assert errors == ["boom"]

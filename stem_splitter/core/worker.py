@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal
-from stem_splitter.core.downloader import download_audio
+from stem_splitter.core.downloader import download_audio, search_youtube
 from stem_splitter.core.separator import separate
 from stem_splitter.core.output import make_output_dir
 from stem_splitter.core.midi import convert_stem_to_midi
@@ -64,3 +64,18 @@ class MidiWorker(QThread):
             except Exception as e:
                 self.error.emit(stem, str(e))
         self.finished.emit()
+
+
+class SearchWorker(QThread):
+    finished = pyqtSignal(list)   # list[SearchResult]
+    error = pyqtSignal(str)
+
+    def __init__(self, query: str):
+        super().__init__()
+        self.query = query
+
+    def run(self):
+        try:
+            self.finished.emit(search_youtube(self.query))
+        except Exception as e:
+            self.error.emit(str(e))
