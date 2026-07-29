@@ -72,8 +72,19 @@ class SearchWorker(QThread):
   - For each item, kick off an async thumbnail fetch (see below) and call `item.setIcon(...)` when it lands.
 - On `SearchWorker.error(message)`: re-enable Start button, set `_url_error` to `"Search failed: {message}"`.
 - `itemActivated` (covers double-click and Enter) on a result:
-  - Build `(result.url, sanitize(result.title), True)` — the same 3-tuple shape `_on_url_start` builds for a pasted URL — and emit `start_pipeline`.
+  - Build `(result.url, _sanitize_track_name(result.title), True)` — the same 3-tuple shape `_on_url_start` builds for a pasted URL — and emit `start_pipeline`.
   - Clear and hide the results list.
+
+### Track name sanitization
+
+`make_output_dir()` (`stem_splitter/core/output.py`) does no sanitization today — it works because URL-derived track names (`url.split("v=")[-1]`, a video ID) are already filesystem-safe. A real video title is not: e.g. `"AC/DC - Back In Black (Official Video)"` contains `/`, which `base_dir / track_name` would silently turn into a nested directory instead of a single track folder. New module-level helper in `source_panel.py` (small, single call site — not worth a shared module):
+
+```python
+import re
+
+def _sanitize_track_name(title: str) -> str:
+    return re.sub(r'[\\/:*?"<>|]', "_", title).strip()
+```
 
 ### Thumbnail loading
 
@@ -91,7 +102,7 @@ User types text, clicks Start (or presses Enter)
           → finished(list[SearchResult]) or error(str)
         → populate QListWidget (text now, thumbnails async via QNetworkAccessManager)
         → user double-clicks / Enters a result
-          → start_pipeline.emit(result.url, sanitize(result.title), True)
+          → start_pipeline.emit(result.url, _sanitize_track_name(result.title), True)
 ```
 
 From `start_pipeline` onward, behavior is identical regardless of whether the URL came from pasting or from search — `MainWindow._on_start_pipeline` and `PipelineWorker` are untouched.
@@ -118,6 +129,7 @@ Follows `tests/test_downloader.py` conventions (mock `subprocess.run`, assert on
 - Zero-results case (empty yt-dlp stdout) → returns `[]`, not an error.
 - yt-dlp non-zero exit → raises `CalledProcessError`, same as the existing `download_audio` test.
 - `SourcePanel`: a light test verifying that activating a result item emits `start_pipeline` with the expected `(url, track_name, True)` tuple.
+- `_sanitize_track_name()`: asserts `/`, `\`, `:`, etc. are replaced, e.g. `"AC/DC - Back In Black"` → `"AC_DC - Back In Black"`.
 
 ## Out of Scope
 
