@@ -7,10 +7,12 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QLineEdit, QPushButton, QLabel, QFileDialog,
+    QListWidget, QListWidgetItem,
 )
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import pyqtSignal, Qt
 from stem_splitter.core.downloader import is_valid_youtube_url, SearchResult
 from stem_splitter.core.recorder import is_blackhole_available, Recorder
+from stem_splitter.core.worker import SearchWorker
 
 
 def _sanitize_track_name(title: str) -> str:
@@ -40,7 +42,7 @@ class SourcePanel(QWidget):
         layout = QVBoxLayout(w)
         row = QHBoxLayout()
         self._url_input = QLineEdit()
-        self._url_input.setPlaceholderText("YouTube URL or paste link here")
+        self._url_input.setPlaceholderText("YouTube URL, or type a search")
         self._url_start_btn = QPushButton("Start")
         self._url_start_btn.clicked.connect(self._on_url_start)
         row.addWidget(self._url_input)
@@ -49,16 +51,61 @@ class SourcePanel(QWidget):
         self._url_error.setStyleSheet("color: red;")
         layout.addLayout(row)
         layout.addWidget(self._url_error)
+        self._results_list = QListWidget()
+        self._results_list.setVisible(False)
+        self._results_list.itemActivated.connect(self._on_result_activated)
+        layout.addWidget(self._results_list)
+        self._search_worker: SearchWorker | None = None
         return w
 
     def _on_url_start(self):
-        url = self._url_input.text().strip()
-        if not is_valid_youtube_url(url):
-            self._url_error.setText("Invalid YouTube URL")
+        text = self._url_input.text().strip()
+        if not text:
+            return
+        if is_valid_youtube_url(text):
+            self._url_error.setStyleSheet("color: red;")
+            self._url_error.setText("")
+            self._results_list.setVisible(False)
+            track_name = text.split("v=")[-1] if "v=" in text else text.split("/")[-1]
+            self.start_pipeline.emit(text, track_name, True)
+            return
+        self._url_error.setStyleSheet("color: black;")
+        self._url_error.setText("Searching…")
+        self._url_start_btn.setEnabled(False)
+        self._search_worker = SearchWorker(text)
+        self._search_worker.finished.connect(self._on_search_finished)
+        self._search_worker.error.connect(self._on_search_error)
+        self._search_worker.start()
+
+    def _on_search_finished(self, results: list) -> None:
+        self._url_start_btn.setEnabled(True)
+        if not results:
+            self._url_error.setStyleSheet("color: red;")
+            query = self._url_input.text().strip()
+            self._url_error.setText(f"No results found for '{query}'")
+            self._results_list.setVisible(False)
             return
         self._url_error.setText("")
-        track_name = url.split("v=")[-1] if "v=" in url else url.split("/")[-1]
-        self.start_pipeline.emit(url, track_name, True)
+        self._results_list.clear()
+        for result in results:
+            minutes, seconds = divmod(result.duration_seconds, 60)
+            item = QListWidgetItem(f"{result.title} — {result.channel} — {minutes}:{seconds:02d}")
+            item.setData(Qt.ItemDataRole.UserRole, result)
+            self._results_list.addItem(item)
+        self._results_list.setVisible(True)
+
+    def _on_search_error(self, message: str) -> None:
+        self._url_start_btn.setEnabled(True)
+        self._url_error.setStyleSheet("color: red;")
+        self._url_error.setText(f"Search failed: {message}")
+        self._results_list.setVisible(False)
+
+    def _on_result_activated(self, item: QListWidgetItem) -> None:
+        result = item.data(Qt.ItemDataRole.UserRole)
+        url, track_name, is_url = _build_pipeline_args(result)
+        self._results_list.setVisible(False)
+        self._results_list.clear()
+        self.start_pipeline.emit(url, track_name, is_url)
 
     def _make_local_tab(self) -> QWidget:
         w = QWidget()
