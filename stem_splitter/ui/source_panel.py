@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
 from PyQt6.QtWidgets import (
@@ -8,8 +9,16 @@ from PyQt6.QtWidgets import (
     QLineEdit, QPushButton, QLabel, QFileDialog,
 )
 from PyQt6.QtCore import pyqtSignal
-from stem_splitter.core.downloader import is_valid_youtube_url
+from stem_splitter.core.downloader import is_valid_youtube_url, SearchResult
 from stem_splitter.core.recorder import is_blackhole_available, Recorder
+
+
+def _sanitize_track_name(title: str) -> str:
+    return re.sub(r'[\\/:*?"<>|]', "_", title).strip()
+
+
+def _build_pipeline_args(result: SearchResult) -> tuple[str, str, bool]:
+    return (result.url, _sanitize_track_name(result.title), True)
 
 
 class SourcePanel(QWidget):
