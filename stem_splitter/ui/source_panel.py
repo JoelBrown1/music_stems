@@ -9,7 +9,9 @@ from PyQt6.QtWidgets import (
     QLineEdit, QPushButton, QLabel, QFileDialog,
     QListWidget, QListWidgetItem,
 )
-from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtCore import pyqtSignal, Qt, QUrl
+from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from stem_splitter.core.downloader import is_valid_youtube_url, SearchResult
 from stem_splitter.core.recorder import is_blackhole_available, Recorder
 from stem_splitter.core.worker import SearchWorker
@@ -56,6 +58,7 @@ class SourcePanel(QWidget):
         self._results_list.itemActivated.connect(self._on_result_activated)
         layout.addWidget(self._results_list)
         self._search_worker: SearchWorker | None = None
+        self._network_manager = QNetworkAccessManager(self)
         return w
 
     def _on_url_start(self):
@@ -94,6 +97,7 @@ class SourcePanel(QWidget):
             item = QListWidgetItem(f"{result.title} — {result.channel} — {minutes}:{seconds:02d}")
             item.setData(Qt.ItemDataRole.UserRole, result)
             self._results_list.addItem(item)
+            self._load_thumbnail(item, result.thumbnail_url)
         self._results_list.setVisible(True)
 
     def _on_search_error(self, message: str) -> None:
@@ -108,6 +112,20 @@ class SourcePanel(QWidget):
         self._results_list.setVisible(False)
         self._results_list.clear()
         self.start_pipeline.emit(url, track_name, is_url)
+
+    def _load_thumbnail(self, item: QListWidgetItem, thumbnail_url: str) -> None:
+        if not thumbnail_url:
+            return
+        reply = self._network_manager.get(QNetworkRequest(QUrl(thumbnail_url)))
+        reply.finished.connect(lambda: self._on_thumbnail_loaded(item, reply))
+
+    def _on_thumbnail_loaded(self, item: QListWidgetItem, reply: QNetworkReply) -> None:
+        if reply.error() == QNetworkReply.NetworkError.NoError:
+            pixmap = QPixmap()
+            pixmap.loadFromData(reply.readAll().data())
+            if not pixmap.isNull():
+                item.setIcon(QIcon(pixmap))
+        reply.deleteLater()
 
     def _make_local_tab(self) -> QWidget:
         w = QWidget()
