@@ -72,6 +72,8 @@ class SourcePanel(QWidget):
         self._url_error.setStyleSheet("color: black;")
         self._url_error.setText("Searching…")
         self._url_start_btn.setEnabled(False)
+        self._results_list.setVisible(False)
+        self._results_list.clear()
         self._search_worker = SearchWorker(text)
         self._search_worker.finished.connect(self._on_search_finished)
         self._search_worker.error.connect(self._on_search_error)
