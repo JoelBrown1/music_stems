@@ -59,6 +59,7 @@ class SourcePanel(QWidget):
         layout.addWidget(self._results_list)
         self._search_worker: SearchWorker | None = None
         self._network_manager = QNetworkAccessManager(self)
+        self._search_generation = 0
         return w
 
     def _on_url_start(self):
@@ -76,6 +77,7 @@ class SourcePanel(QWidget):
         self._url_error.setText("Searching…")
         self._url_start_btn.setEnabled(False)
         self._results_list.setVisible(False)
+        self._search_generation += 1
         self._results_list.clear()
         self._search_worker = SearchWorker(text)
         self._search_worker.finished.connect(self._on_search_finished)
@@ -91,6 +93,7 @@ class SourcePanel(QWidget):
             self._results_list.setVisible(False)
             return
         self._url_error.setText("")
+        self._search_generation += 1
         self._results_list.clear()
         for result in results:
             minutes, seconds = divmod(result.duration_seconds, 60)
@@ -110,16 +113,21 @@ class SourcePanel(QWidget):
         result = item.data(Qt.ItemDataRole.UserRole)
         url, track_name, is_url = _build_pipeline_args(result)
         self._results_list.setVisible(False)
+        self._search_generation += 1
         self._results_list.clear()
         self.start_pipeline.emit(url, track_name, is_url)
 
     def _load_thumbnail(self, item: QListWidgetItem, thumbnail_url: str) -> None:
         if not thumbnail_url:
             return
+        generation = self._search_generation
         reply = self._network_manager.get(QNetworkRequest(QUrl(thumbnail_url)))
-        reply.finished.connect(lambda: self._on_thumbnail_loaded(item, reply))
+        reply.finished.connect(lambda: self._on_thumbnail_loaded(item, reply, generation))
 
-    def _on_thumbnail_loaded(self, item: QListWidgetItem, reply: QNetworkReply) -> None:
+    def _on_thumbnail_loaded(self, item: QListWidgetItem, reply: QNetworkReply, generation: int) -> None:
+        if generation != self._search_generation:
+            reply.deleteLater()
+            return
         if reply.error() == QNetworkReply.NetworkError.NoError:
             pixmap = QPixmap()
             pixmap.loadFromData(reply.readAll().data())
