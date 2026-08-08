@@ -86,19 +86,32 @@ class PlayerEngine:
 
     def pause(self) -> None:
         self._is_playing = False
-        if self._stream:
-            self._stream.stop()
-            self._stream.close()
-            self._stream = None
+        self._teardown_stream()
 
     def stop(self) -> None:
         self._is_playing = False
-        if self._stream:
-            self._stream.stop()
-            self._stream.close()
-            self._stream = None
+        self._teardown_stream()
         with self._lock:
             self._position = 0
+
+    def _teardown_stream(self) -> None:
+        # sd.OutputStream.stop() can block for an unpredictable amount of
+        # time waiting on the OS audio subsystem (observed hanging inside
+        # CoreAudio). pause()/stop() are called directly from Qt button
+        # slots on the main thread, so that wait must never happen there —
+        # it would freeze the whole UI with no way to recover. The engine
+        # already stops producing audio immediately (_is_playing is False
+        # above, and the callback raises CallbackStop on its next tick), so
+        # the actual device teardown can safely happen off-thread.
+        if self._stream:
+            stream = self._stream
+            self._stream = None
+            threading.Thread(target=self._close_stream, args=(stream,), daemon=True).start()
+
+    @staticmethod
+    def _close_stream(stream: sd.OutputStream) -> None:
+        stream.stop()
+        stream.close()
 
     def seek(self, fraction: float) -> None:
         fraction = max(0.0, min(1.0, fraction))

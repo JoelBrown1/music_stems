@@ -1,8 +1,11 @@
 # tests/test_player.py
+import threading
+import time
 import numpy as np
 import pytest
 import soundfile as sf
 from pathlib import Path
+from unittest.mock import MagicMock
 from stem_splitter.core.player import PlayerEngine
 
 
@@ -195,3 +198,69 @@ def test_stretch_rate_1_restores_original_length(tmp_path):
     assert engine._length != original_len
     engine.stretch(1.0)
     assert engine._length == original_len
+
+
+def _mock_stream_with_slow_stop(delay: float = 2.0) -> tuple[MagicMock, threading.Event]:
+    """A mock sd.OutputStream whose .stop() blocks like a hung CoreAudio call."""
+    stream = MagicMock()
+    stop_started = threading.Event()
+
+    def slow_stop():
+        stop_started.set()
+        time.sleep(delay)
+
+    stream.stop.side_effect = slow_stop
+    return stream, stop_started
+
+
+def test_stop_does_not_block_on_slow_stream_teardown(tmp_path):
+    _wav(tmp_path / 'vocals.wav')
+    engine = PlayerEngine({'vocals': tmp_path / 'vocals.wav'})
+    stream, stop_started = _mock_stream_with_slow_stop()
+    engine._stream = stream
+    engine._is_playing = True
+
+    start = time.monotonic()
+    engine.stop()
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 0.5, f"stop() blocked the caller for {elapsed:.2f}s"
+    assert engine.is_playing is False
+    assert engine.position == 0.0
+    assert engine._stream is None
+
+    assert stop_started.wait(timeout=1.0), "background thread never called stream.stop()"
+
+
+def test_stop_still_closes_stream_in_background(tmp_path):
+    _wav(tmp_path / 'vocals.wav')
+    engine = PlayerEngine({'vocals': tmp_path / 'vocals.wav'})
+    stream, _ = _mock_stream_with_slow_stop(delay=0.1)
+    engine._stream = stream
+    engine._is_playing = True
+
+    engine.stop()
+
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline and not stream.close.called:
+        time.sleep(0.02)
+
+    stream.stop.assert_called_once()
+    stream.close.assert_called_once()
+
+
+def test_pause_does_not_block_on_slow_stream_teardown(tmp_path):
+    _wav(tmp_path / 'vocals.wav')
+    engine = PlayerEngine({'vocals': tmp_path / 'vocals.wav'})
+    stream, stop_started = _mock_stream_with_slow_stop()
+    engine._stream = stream
+    engine._is_playing = True
+
+    start = time.monotonic()
+    engine.pause()
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 0.5, f"pause() blocked the caller for {elapsed:.2f}s"
+    assert engine.is_playing is False
+    assert engine._stream is None
+    assert stop_started.wait(timeout=1.0), "background thread never called stream.stop()"
