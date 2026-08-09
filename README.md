@@ -107,6 +107,14 @@ Run this command:
 
 **This will take 10–20 minutes** and download roughly 1–2 GB of files. That's normal. You'll see a lot of text scrolling by — as long as it doesn't say `ERROR`, it's working.
 
+One dependency, `madmom` (used for drum detection), needs a separate command. It has to be built from source, and its build tools need to be installed *first* — which is why it's not just listed in `requirements.txt` alongside everything else. Once Step 7's command above finishes, run:
+
+```bash
+.venv/bin/pip install --no-build-isolation "git+https://github.com/CPJKU/madmom.git"
+```
+
+This installs `madmom` straight from its GitHub source rather than the copy on PyPI — the PyPI release hasn't been updated since 2018 and doesn't work on the Python version this app uses. This step also takes a few minutes since it compiles code on your machine; that's normal.
+
 ---
 
 ### Step 8 — Run the App
@@ -178,11 +186,15 @@ Try closing Terminal and reopening it. If it still doesn't work, Homebrew may ne
 You're in the wrong folder. Run `cd ~/music_stems` and try again.
 
 **The app window opens but is blank or crashes immediately**
-This can happen if a dependency didn't install correctly. Try running:
+This can happen if a dependency didn't install correctly. Try running both Step 7 commands again:
 ```bash
 .venv/bin/pip install -r requirements.txt
+.venv/bin/pip install --no-build-isolation "git+https://github.com/CPJKU/madmom.git"
 ```
-again. It's safe to run multiple times.
+It's safe to run these multiple times.
+
+**"ModuleNotFoundError: No module named 'Cython'" (or 'madmom' build fails)**
+You ran the `madmom` install command before the main `requirements.txt` command, or skipped straight to it. Run `.venv/bin/pip install -r requirements.txt` first, then the `madmom` command from Step 7.
 
 **Splitting takes a really long time**
 That's normal for the first split — the AI model is doing a lot of work. On an Apple Silicon Mac (M1/M2/M3), a 3-minute song typically takes 1–2 minutes. On an older Intel Mac it may take 5–10 minutes.
