@@ -1,9 +1,11 @@
 # tests/test_player_window.py
+import numpy as np
 import pytest
 from stem_splitter.ui.player_window import (
     _measure_fractions, _beat_fractions,
     _to_screen, _to_fraction, _zoom_centered, _clamp_window,
     _nearest_beat_fraction, _should_snap, _MIN_SPAN,
+    _correct_octave_error,
 )
 
 
@@ -225,3 +227,43 @@ def test_should_snap_within_threshold():
 def test_should_snap_outside_threshold():
     # fraction and nearest 15px apart → no snap
     assert _should_snap(0.0, 15.0 / 800.0, 0.0, 1.0, 800) is False
+
+
+# --- _correct_octave_error ---
+
+def test_octave_correct_prefers_half_when_comparably_strong():
+    # 156 detected, but the true 78 BPM beat is nearly as strong (95%) —
+    # classic eighth-note-vs-beat octave error, should fall back to half.
+    freqs = np.array([39.0, 78.0, 117.0, 156.0, 195.0])
+    strengths = np.array([0.1, 0.95, 0.1, 1.0, 0.1])
+    assert _correct_octave_error(156.0, freqs, strengths) == pytest.approx(78.0)
+
+
+def test_octave_correct_keeps_full_tempo_when_half_much_weaker():
+    # Half tempo's periodicity is much weaker — not an octave error, keep 156.
+    freqs = np.array([39.0, 78.0, 117.0, 156.0, 195.0])
+    strengths = np.array([0.1, 0.2, 0.1, 1.0, 0.1])
+    assert _correct_octave_error(156.0, freqs, strengths) == pytest.approx(156.0)
+
+
+def test_octave_correct_ignores_half_below_min_bpm():
+    # Half of 60 is 30, below the 40 BPM floor — never halve below that,
+    # even if its periodicity looks strong.
+    freqs = np.array([30.0, 60.0])
+    strengths = np.array([1.0, 1.0])
+    assert _correct_octave_error(60.0, freqs, strengths) == pytest.approx(60.0)
+
+
+def test_octave_correct_returns_unchanged_for_non_positive_bpm():
+    freqs = np.array([39.0, 78.0])
+    strengths = np.array([1.0, 1.0])
+    assert _correct_octave_error(0.0, freqs, strengths) == 0.0
+
+
+def test_octave_correct_matches_november_rain_regression():
+    # Measured on the real "November Rain" stems (true tempo 78 BPM): librosa
+    # detects 152, with the true-tempo periodicity at 88.7% of the detected
+    # tempo's strength. Regression guard for the bug report that prompted this.
+    freqs = np.array([76.0, 152.0])
+    strengths = np.array([0.6168, 0.6952])
+    assert _correct_octave_error(152.0, freqs, strengths) == pytest.approx(76.0)

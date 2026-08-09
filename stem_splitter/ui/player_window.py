@@ -608,6 +608,35 @@ class StretchWorker(QThread):
         self.finished.emit()
 
 
+def _correct_octave_error(bpm: float, tempo_freqs, tempo_strengths,
+                           min_bpm: float = 40.0, ratio_threshold: float = 0.8) -> float:
+    """Fall back to half tempo if it explains the rhythm just as well.
+
+    Autocorrelation-based tempo trackers often lock onto a faster subdivision
+    (e.g. eighth notes) instead of the felt beat, showing up as ~2x the true
+    tempo. If halving stays above min_bpm and its tempogram strength is at
+    least ratio_threshold of the detected tempo's strength, prefer the half.
+    """
+    import numpy as np
+    if bpm <= 0:
+        return bpm
+    half = bpm / 2.0
+    if half < min_bpm:
+        return bpm
+
+    def _strength_near(target, tol=3.0):
+        mask = np.abs(tempo_freqs - target) < tol
+        return tempo_strengths[mask].max() if mask.any() else 0.0
+
+    full_strength = _strength_near(bpm)
+    if full_strength <= 0:
+        return bpm
+    half_strength = _strength_near(half)
+    if half_strength >= full_strength * ratio_threshold:
+        return half
+    return bpm
+
+
 class BpmDetectWorker(QThread):
     detected = pyqtSignal(float)
 
@@ -638,11 +667,16 @@ class BpmDetectWorker(QThread):
             for stem_mono in stems:
                 mix[:stem_mono.shape[0]] += stem_mono
             mix /= len(stems)
-            tempo, _ = librosa.beat.beat_track(y=mix, sr=sr)
+            onset_env = librosa.onset.onset_strength(y=mix, sr=sr)
+            tempo = librosa.feature.tempo(onset_envelope=onset_env, sr=sr)
             bpm = float(np.atleast_1d(tempo)[0])
             if not (40.0 <= bpm <= 250.0):
                 self.detected.emit(0.0)
                 return
+            tempogram = librosa.feature.tempogram(onset_envelope=onset_env, sr=sr)
+            tempo_strengths = tempogram.mean(axis=1)
+            tempo_freqs = librosa.tempo_frequencies(len(tempo_strengths), sr=sr)
+            bpm = _correct_octave_error(bpm, tempo_freqs, tempo_strengths)
             self.detected.emit(float(round(bpm)))
         except Exception:
             self.detected.emit(0.0)
