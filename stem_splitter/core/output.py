@@ -1,6 +1,6 @@
 from pathlib import Path
 
-MUSIC_TRACKS_DIR = Path.home() / "Documents" / "music_tracks"
+MUSIC_TRACKS_DIR = Path.home() / "Documents" / "music_tracks" / "stems"
 STEMS = ["vocals", "drums", "bass", "guitar", "piano", "other"]
 
 def make_output_dir(track_name: str, base_dir: Path = MUSIC_TRACKS_DIR) -> Path:
